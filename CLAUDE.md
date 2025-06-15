@@ -35,7 +35,7 @@ A Python application that polls multiple flight data sources, merges the data in
    - OpenSky fills gaps for aircraft beyond local receiver range
    - Deduplication based on ICAO hex codes
    - Aircraft sorted by distance from region center
-4. Helicopters identified using patterns (callsigns, ICAO codes, aircraft types)
+4. Helicopters identified using ICAO aircraft class (primary) and patterns (fallback)
 5. Flight destinations estimated using airport database and heading
 6. Data stored in Redis with 5-minute expiration:
    - `flight_data_blended`: Complete dataset
@@ -106,7 +106,12 @@ Both sources are normalized to this common format:
   "data_source": "dump1090",     // Source: dump1090/opensky/blended
   "registration": "N12345",      // From aircraft database
   "model": "Boeing 737-800",     // From aircraft database
-  "operator": "United Airlines"  // From aircraft database
+  "operator": "United Airlines", // From aircraft database
+  "manufacturer": "Boeing",      // From aircraft database
+  "typecode": "B738",           // ICAO type code from aircraft database
+  "owner": "United Airlines",    // Aircraft owner from aircraft database
+  "aircraft_type": "Boeing 737-800", // Full aircraft type description
+  "icao_aircraft_class": "L2J"   // ICAO aircraft class (e.g., L2J for landplane, 2 engines, jet)
 }
 ```
 
@@ -154,11 +159,15 @@ The application uses a centralized Redis instance with database separation:
 - **DB 15**: Testing/Development
 
 ### Docker Deployment
-1. **Development Mode**: Includes Redis in docker-compose.yml
-2. **Production Mode**: Uses external centralized Redis via docker-compose.prod.yml
-3. **Centralized Redis Stack**: Separate redis-stack/ with:
-   - Redis 7 Alpine
-   - Redis Commander for monitoring
+1. **Development Mode**: Uses docker-compose.yml with separate collector and web_api services plus Redis
+2. **Production Mode**: Uses docker-compose.prod.yml with external centralized Redis
+3. **Service Architecture**:
+   - `collector` service: Runs data collection in background
+   - `web_api` service: Serves FastAPI endpoints on port 8000
+   - Both services connect to shared Redis instance
+4. **Centralized Redis Stack**: Separate redis-stack/ directory with:
+   - Redis 7 Alpine with custom configuration
+   - Redis Commander for monitoring on port 8081
    - Persistent volume for data
    - Shared network for inter-container communication
 
@@ -169,11 +178,15 @@ The application uses a centralized Redis instance with database separation:
 - Two view modes: JSON and tabular
 
 ### API Endpoints
-- `GET /status` - System health, collector status, and API rate limits
-- `GET /{region}/flights` - Returns all flights for a region in JSON format
-- `GET /{region}/flights/tabular` - Returns flights in tabular/CSV format
-- `GET /{region}/choppers` - Returns helicopters only for a region
-- `GET /{region}/choppers/tabular` - Returns helicopters in tabular format
+- `GET /` - Root endpoint with API information
+- `GET /health` - Health check endpoint
+- `GET /api/v1/status` - System health, collector status, and API rate limits
+- `GET /api/v1/{region}/flights` - Returns all flights for a region in JSON format
+- `GET /api/v1/{region}/flights/tabular` - Returns flights in tabular/CSV format
+- `GET /api/v1/{region}/choppers` - Returns helicopters only for a region
+- `GET /api/v1/{region}/choppers/tabular` - Returns helicopters in tabular format
+- `GET /api/v1/{region}/stats` - Returns statistics for a specific region
+- `GET /api/v1/debug/memory` - Debug endpoint to view memory store
 - `GET /docs` - Auto-generated API documentation (FastAPI feature)
 - `GET /redoc` - Alternative API documentation interface
 
@@ -204,84 +217,106 @@ global:
     host: ${REDIS_HOST:-localhost}
     port: ${REDIS_PORT:-6379}
     db: ${REDIS_DB:-0}
+    key_expiry: 3600  # 1 hour TTL for flight data
+  
+  logging:
+    level: ${LOG_LEVEL:-INFO}
+    file: logs/flight_collector.log
+    rotate_time: "00:00"  # Midnight local time
+    backup_count: 7  # Keep 7 days of logs
   
   polling:
-    default_interval: 30  # seconds
+    dump1090_interval: 15  # seconds - frequent updates for local data
+    opensky_interval: 60   # seconds - conservative for API limits
     retry_attempts: 3
     timeout: 10
+    backoff_factor: 2  # Exponential backoff multiplier
 
 # Region definitions with center point and radius
 regions:
-  socal:
+  etex:
     enabled: true
-    name: "Southern California"
+    name: "East Texas"
+    timezone: "America/Chicago"
     center:
-      lat: 34.0522  # Los Angeles
-      lon: -118.2437
-    radius_miles: 150
+      lat: 32.3513  # Tyler, TX
+      lon: -95.3011
+    radius_miles: 150  # ~2.2 degrees, costs 1 credit per OpenSky request
     collectors:
       - type: "opensky"
         enabled: true
-        url: "https://opensky-network.org/api"
-        anonymous: true
-        
-      - type: "dump1090"
-        enabled: true
-        url: "http://192.168.1.100:8080/data/aircraft.json"
-        name: "Local ADS-B Receiver"
-  
-  norcal:
-    enabled: true
-    name: "Northern California"
-    center:
-      lat: 37.7749  # San Francisco
-      lon: -122.4194
-    radius_miles: 100
-    collectors:
-      - type: "dump1090"
-        enabled: true
-        url: "http://10.0.0.50:8080/data/aircraft.json"
-        name: "Bay Area Receiver"
+        url: "https://opensky-network.org/api/states/all"
+        anonymous: ${OPENSKY_ANONYMOUS:-true}
+        username: ${OPENSKY_USERNAME:-}
+        password: ${OPENSKY_PASSWORD:-}
 
 # Airport definitions for destination estimation
 airports:
-  LAX:
-    name: "Los Angeles International"
-    lat: 33.9425
-    lon: -118.4081
+  # Texas - Major airports around Tyler/East Texas
+  TYR:
+    name: "Tyler Pounds Regional"
+    lat: 32.3542
+    lon: -95.4024
+    icao: "KTYR"
     
-  SFO:
-    name: "San Francisco International"
-    lat: 37.6213
-    lon: -122.3790
+  DFW:
+    name: "Dallas/Fort Worth International"
+    lat: 32.8998
+    lon: -97.0403
+    icao: "KDFW"
     
-  SAN:
-    name: "San Diego International"
-    lat: 32.7338
-    lon: -117.1933
+  DAL:
+    name: "Dallas Love Field"
+    lat: 32.8473
+    lon: -96.8517
+    icao: "KDAL"
     
-  LAS:
-    name: "Las Vegas McCarran"
-    lat: 36.0840
-    lon: -115.1537
+  IAH:
+    name: "Houston George Bush Intercontinental"
+    lat: 29.9844
+    lon: -95.3414
+    icao: "KIAH"
     
-  PHX:
-    name: "Phoenix Sky Harbor"
-    lat: 33.4352
-    lon: -112.0101
+  HOU:
+    name: "Houston William P. Hobby"
+    lat: 29.6454
+    lon: -95.2789
+    icao: "KHOU"
 
 # Collector type definitions
 collector_types:
   opensky:
     class: "OpenSkyCollector"
     rate_limit: 100  # requests per minute
-    data_format: "json"
+    daily_credits_anonymous: 400
+    daily_credits_authenticated: 4000
+    credit_header: "X-Rate-Limit-Remaining"
     
   dump1090:
     class: "Dump1090Collector"
-    rate_limit: 600  # 10 requests per second for local
-    data_format: "json"
-    local: true  # No rate limiting for local receivers
+    rate_limit: 600  # 10 requests per second
+    local: true  # No external rate limiting
+
+# Helicopter identification patterns
+helicopter_patterns:
+  # Medical helicopters
+  - prefix: "N911"
+  - prefix: "LIFE"
+  - callsign_contains: ["MEDIC", "ANGEL", "STAR", "LIFE"]
+  
+  # Law enforcement
+  - prefix: "N120LA"  # LAPD pattern
+  - prefix: "N220LA"
+  - callsign_contains: ["POLICE", "SHERIFF"]
+  
+  # News helicopters
+  - callsign_contains: ["NEWS", "SKY", "CHOPPER"]
+  
+  # Military patterns
+  - icao_hex_prefix: ["AE"]  # US Military
+  
+  # General helicopter models (ICAO type codes)
+  - aircraft_type: ["H60", "EC30", "EC35", "EC45", "B407", "B429", "AS50", "R44", "R66"]
 ```
 
 #### Key Configuration Features:
