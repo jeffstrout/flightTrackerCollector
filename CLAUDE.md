@@ -27,25 +27,140 @@ A Python application that polls multiple flight data sources, merges the data in
 
 ### Data Flow
 1. Collectors poll flight data sources on scheduled intervals
-   - OpenSky: REST API calls using bounding box (lamin/lomin/lamax/lomax)
-   - dump1090: JSON endpoint polling from local ADS-B receivers
+   - dump1090: Every 15 seconds (no rate limits)
+   - OpenSky: Every 60 seconds (to conserve API credits)
 2. Raw data is normalized into a common format
-3. Helicopters identified using patterns (callsigns, ICAO codes, aircraft types)
-4. Flight destinations estimated using airport database and heading
-5. Data is merged in Redis with conflict resolution logic
-6. Web interface queries Redis and presents data via API endpoints
+3. Data blending strategy:
+   - dump1090 has priority (high-quality local data)
+   - OpenSky fills gaps for aircraft beyond local receiver range
+   - Deduplication based on ICAO hex codes
+   - Aircraft sorted by distance from region center
+4. Helicopters identified using patterns (callsigns, ICAO codes, aircraft types)
+5. Flight destinations estimated using airport database and heading
+6. Data stored in Redis with 5-minute expiration:
+   - `flight_data_blended`: Complete dataset
+   - `aircraft_live:{hex}`: Individual aircraft for quick lookups
+7. Web interface queries Redis and presents data via API endpoints
+
+### Data Format Mapping
+
+#### OpenSky State Vector Format
+OpenSky returns an array of state vectors with positional indices:
+- `[0]` icao24 (hex)
+- `[1]` callsign (flight)
+- `[2]` origin_country
+- `[3]` time_position
+- `[4]` last_contact
+- `[5]` longitude
+- `[6]` latitude
+- `[7]` baro_altitude (meters)
+- `[8]` on_ground
+- `[9]` velocity (m/s)
+- `[10]` true_track
+- `[11]` vertical_rate (m/s)
+- `[12]` sensors
+- `[13]` geo_altitude (meters)
+- `[14]` squawk
+- `[15]` spi
+- `[16]` position_source
+
+#### dump1090 JSON Format
+dump1090 returns a JSON object with named fields:
+```json
+{
+  "hex": "a1b2c3",
+  "flight": "UAL123",
+  "lat": 34.0522,
+  "lon": -118.2437,
+  "alt_baro": 35000,
+  "alt_geom": 35500,
+  "gs": 450.5,
+  "track": 270.0,
+  "baro_rate": 0,
+  "squawk": "1200",
+  "rssi": -12.5,
+  "messages": 150,
+  "seen": 0.5
+}
+```
+
+#### Normalized Redis Format
+Both sources are normalized to this common format:
+```json
+{
+  "hex": "a1b2c3",              // ICAO24 hex code
+  "flight": "UAL123",            // Callsign/flight number
+  "lat": 34.0522,                // Latitude
+  "lon": -118.2437,              // Longitude
+  "alt_baro": 35000,             // Barometric altitude (feet)
+  "alt_geom": 35500,             // Geometric altitude (feet)
+  "gs": 450.5,                   // Ground speed (knots)
+  "track": 270.0,                // True track (degrees)
+  "baro_rate": 0,                // Vertical rate (ft/min)
+  "squawk": "1200",              // Squawk code
+  "on_ground": false,            // Ground status
+  "seen": 0.5,                   // Seconds since last update
+  "rssi": -12.5,                 // Signal strength (dump1090 only)
+  "messages": 150,               // Message count (dump1090 only)
+  "distance_miles": 25.3,        // Calculated distance from center
+  "data_source": "dump1090",     // Source: dump1090/opensky/blended
+  "registration": "N12345",      // From aircraft database
+  "model": "Boeing 737-800",     // From aircraft database
+  "operator": "United Airlines"  // From aircraft database
+}
+```
+
+#### Unit Conversions
+- **Altitude**: OpenSky meters → feet (multiply by 3.28084)
+- **Speed**: OpenSky m/s → knots (multiply by 1.94384)
+- **Vertical Rate**: OpenSky m/s → ft/min (multiply by 196.85)
 
 ### Logging Strategy
 - **Rotating logs** - Rotate at midnight local time per region
 - **Success entries** - Include timestamp, region, source, aircraft count, API credits remaining
 - **Error entries** - Include full traceback, retry attempts, response codes
 - **OpenSky specific** - Log remaining API credits from X-Rate-Limit-Remaining header
+- **Rate limiting** - Handle 429 errors with exponential backoff
 - **Format**: `2024-01-15 14:30:45 - socal.opensky - INFO - Collected 47 aircraft, 385 credits remaining`
 
+### OpenSky Rate Limiting
+- **Anonymous users**: 400 credits/day, ~4 credits per request for large areas
+- **Authenticated users**: 4000-8000 credits/day
+- **429 handling**: Exponential backoff when rate limited
+- **Credit calculation**: Based on bounding box area (degrees²)
+  - 0-25°²: 1 credit
+  - 25-100°²: 2 credits
+  - 100-400°²: 3 credits
+  - >400°²: 4 credits
+
 ### Redis Schema
-- Flight data keyed by flight number + date
-- Expiration set on entries to prevent unbounded growth
-- Separate keys for metadata (last update time, source info)
+- **Aircraft Database** (persistent):
+  - `aircraft_db:{icao}`: Hash with registration, manufacturer, model, etc.
+- **Live Flight Data** (5-minute TTL):
+  - `flight_data_blended`: Complete blended dataset as JSON
+  - `aircraft_live:{hex}`: Individual aircraft data for quick lookups
+  - `flight_data_raw`: Raw dump1090/OpenSky data (optional)
+- **Regional Data**:
+  - `{region}:flights`: All flights for a region
+  - `{region}:choppers`: Helicopters only
+- **Collector Stats**:
+  - `stats:{region}:cache_hits`: Cache performance metrics
+  - `stats:{region}:api_credits`: OpenSky API credit tracking
+
+### Redis Database Allocation
+The application uses a centralized Redis instance with database separation:
+- **DB 0**: Flight Tracker Collector (this application)
+- **DB 1-14**: Reserved for other applications
+- **DB 15**: Testing/Development
+
+### Docker Deployment
+1. **Development Mode**: Includes Redis in docker-compose.yml
+2. **Production Mode**: Uses external centralized Redis via docker-compose.prod.yml
+3. **Centralized Redis Stack**: Separate redis-stack/ with:
+   - Redis 7 Alpine
+   - Redis Commander for monitoring
+   - Persistent volume for data
+   - Shared network for inter-container communication
 
 ### Web Interface Requirements
 - Simple dashboard showing active flights
@@ -176,9 +291,44 @@ collector_types:
 4. **Environment variables** - For sensitive data like API keys
 5. **Flexible collector URLs** - Support both local and remote data sources
 
+### Setup
+
+#### Virtual Environment (Recommended)
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### Without Virtual Environment
+```bash
+# Install dependencies globally (not recommended)
+python3 -m pip install -r requirements.txt
+```
+
 ### Commands
-- `python -m pytest` - Run tests
-- `python -m black .` - Format code
-- `python -m flake8` - Lint code
-- `uvicorn src.main:app --reload` - Run development server
-- `uvicorn src.main:app --host 0.0.0.0 --port 8000` - Run production server
+
+#### Development
+- `python3 run.py --mode api --reload` - Run API server with auto-reload
+- `python3 run.py --mode cli` - Run collector only (no web interface)
+- `python3 -m pytest` - Run tests
+- `python3 -m black .` - Format code
+- `python3 -m flake8` - Lint code
+
+#### Production
+- `python3 run.py --mode api --host 0.0.0.0 --port 8000` - Run API server
+- `uvicorn src.main:app --host 0.0.0.0 --port 8000` - Alternative API startup
+
+#### Docker
+- `docker-compose up -d` - Run with included Redis (development)
+- `docker-compose -f docker-compose.prod.yml up -d` - Run with external Redis (production)
+
+#### Configuration
+- Set `CONFIG_FILE=collectors-dev.yaml` for Docker development
+- Set `CONFIG_FILE=collectors-local.yaml` for local development
+- Set `CONFIG_FILE=collectors.yaml` for production

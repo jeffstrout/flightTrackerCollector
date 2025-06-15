@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Flight Tracker Collector Service
+  collector:
+    build: .
+    container_name: flight_collector
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0  # Flight tracker uses database 0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TZ=${TZ:-America/Los_Angeles}  # For proper log rotation
+      - CONFIG_FILE=collectors-dev.yaml  # Use dev config
+    volumes:
+      - ./config:/app/config:ro  # Read-only config mount
+      - ./logs:/app/logs  # Logs volume
+    networks:
+      - shared_services
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web API Service
+  web_api:
+    build: .
+    container_name: flight_web_api
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0  # Same database as collector
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CONFIG_FILE=collectors-dev.yaml
+    ports:
+      - "8000:8000"  # Expose API to host
+    volumes:
+      - ./src:/app/src:ro  # Mount source for development
+      - ./config:/app/config:ro
+    networks:
+      - shared_services
+    depends_on:
+      - redis
+      - collector
+
+  # Redis - can be moved to separate stack later
+  redis:
+    image: redis:7-alpine
+    container_name: flight_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - shared_services
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+
+networks:
+  shared_services:
+    # Will be external when using centralized Redis
+    # external: true

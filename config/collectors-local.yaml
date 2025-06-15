@@ -1,0 +1,85 @@
+# Local Development Configuration (No Docker)
+# This config is used when running directly on your machine
+
+# Global settings
+global:
+  redis:
+    host: ${REDIS_HOST:-localhost}  # Local Redis
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    key_expiry: 3600
+  
+  logging:
+    level: ${LOG_LEVEL:-DEBUG}
+    file: logs/flight_collector.log
+    rotate_time: "00:00"
+    backup_count: 3
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  polling:
+    default_interval: 60
+    retry_attempts: 3
+    timeout: 10
+    backoff_factor: 2
+
+# Region definitions with local dump1090 receivers
+regions:
+  etex:
+    enabled: true
+    name: "East Texas"
+    timezone: "America/Chicago"
+    center:
+      lat: 32.3513
+      lon: -95.3011
+    radius_miles: 120
+    collectors:
+      - type: "opensky"
+        enabled: true
+        url: "https://opensky-network.org/api/states/all"
+        anonymous: true
+        
+      # Local network dump1090 receivers
+      - type: "dump1090"
+        enabled: true
+        url: "http://192.168.0.13/tar1090/data/aircraft.json"
+        name: "Home ADS-B Receiver"
+
+# Full airport list remains the same
+airports:
+  LAX:
+    name: "Los Angeles International"
+    lat: 33.9425
+    lon: -118.4081
+    icao: "KLAX"
+  # ... (rest of airports from original config)
+
+# Collector type definitions
+collector_types:
+  opensky:
+    class: "OpenSkyCollector"
+    rate_limit: 100  # requests per minute
+    daily_credits_anonymous: 400
+    daily_credits_authenticated: 4000
+    credit_header: "X-Rate-Limit-Remaining"
+    
+  dump1090:
+    class: "Dump1090Collector"
+    rate_limit: 600  # 10 requests per second
+    local: true  # No external rate limiting
+
+# Helicopter identification patterns
+helicopter_patterns:
+  # Medical helicopters
+  - prefix: "N911"
+  - prefix: "LIFE"
+  - callsign_contains: ["MEDIC", "ANGEL", "STAR", "LIFE"]
+  
+  # Law enforcement
+  - prefix: "N1"
+  - callsign_contains: ["SHERIFF", "POLICE", "TROOPER"]
+  
+  # News helicopters
+  - callsign_contains: ["NEWS", "SKY", "CHOPPER"]
+  
+  # General patterns
+  - suffix: "H"  # Many helicopters end with H

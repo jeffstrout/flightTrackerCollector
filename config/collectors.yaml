@@ -17,21 +17,22 @@ global:
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   
   polling:
-    default_interval: 30  # seconds
+    dump1090_interval: 15  # seconds - frequent updates for local data
+    opensky_interval: 60   # seconds - conservative for API limits
     retry_attempts: 3
     timeout: 10
     backoff_factor: 2  # Exponential backoff multiplier
 
 # Region definitions
 regions:
-  socal:
+  etex:
     enabled: true
-    name: "Southern California"
-    timezone: "America/Los_Angeles"
+    name: "East Texas"
+    timezone: "America/Chicago"
     center:
-      lat: 34.0522  # Los Angeles
-      lon: -118.2437
-    radius_miles: 150
+      lat: 32.3513  # Tyler, TX
+      lon: -95.3011
+    radius_miles: 150  # ~2.2 degrees, costs 1 credit per OpenSky request
     collectors:
       - type: "opensky"
         enabled: true
@@ -39,103 +40,65 @@ regions:
         anonymous: ${OPENSKY_ANONYMOUS:-true}
         username: ${OPENSKY_USERNAME:-}
         password: ${OPENSKY_PASSWORD:-}
-        
-      - type: "dump1090"
-        enabled: true
-        url: "http://192.168.1.100:8080/data/aircraft.json"
-        name: "LAX Area Receiver"
-  
-  bayarea:
-    enabled: true
-    name: "San Francisco Bay Area"
-    timezone: "America/Los_Angeles"
-    center:
-      lat: 37.7749  # San Francisco
-      lon: -122.4194
-    radius_miles: 100
-    collectors:
-      - type: "opensky"
-        enabled: true
-        url: "https://opensky-network.org/api/states/all"
-        anonymous: true
-        
-      - type: "dump1090"
-        enabled: true
-        url: "http://10.0.0.50:8080/data/aircraft.json"
-        name: "SFO Area Receiver"
-
-  phoenix:
-    enabled: true
-    name: "Phoenix Metro"
-    timezone: "America/Phoenix"
-    center:
-      lat: 33.4484  # Phoenix
-      lon: -112.0740
-    radius_miles: 80
-    collectors:
-      - type: "dump1090"
-        enabled: true
-        url: "http://10.0.1.20:8080/data/aircraft.json"
-        name: "PHX Area Receiver"
 
 # Airport database for destination estimation
 airports:
-  # California
-  LAX:
-    name: "Los Angeles International"
-    lat: 33.9425
-    lon: -118.4081
-    icao: "KLAX"
+  # Texas - Major airports around Tyler/East Texas
+  TYR:
+    name: "Tyler Pounds Regional"
+    lat: 32.3542
+    lon: -95.4024
+    icao: "KTYR"
     
-  SFO:
-    name: "San Francisco International"
-    lat: 37.6213
-    lon: -122.3790
-    icao: "KSFO"
+  DFW:
+    name: "Dallas/Fort Worth International"
+    lat: 32.8998
+    lon: -97.0403
+    icao: "KDFW"
     
-  SAN:
-    name: "San Diego International"
-    lat: 32.7338
-    lon: -117.1933
-    icao: "KSAN"
+  DAL:
+    name: "Dallas Love Field"
+    lat: 32.8473
+    lon: -96.8517
+    icao: "KDAL"
     
-  OAK:
-    name: "Oakland International"
-    lat: 37.7213
-    lon: -122.2207
-    icao: "KOAK"
+  IAH:
+    name: "Houston George Bush Intercontinental"
+    lat: 29.9844
+    lon: -95.3414
+    icao: "KIAH"
     
-  SJC:
-    name: "San Jose International"
-    lat: 37.3639
-    lon: -121.9289
-    icao: "KSJC"
+  HOU:
+    name: "Houston William P. Hobby"
+    lat: 29.6454
+    lon: -95.2789
+    icao: "KHOU"
     
-  BUR:
-    name: "Bob Hope Airport"
-    lat: 34.2007
-    lon: -118.3590
-    icao: "KBUR"
+  AUS:
+    name: "Austin-Bergstrom International"
+    lat: 30.1945
+    lon: -97.6699
+    icao: "KAUS"
     
-  # Nevada
-  LAS:
-    name: "Las Vegas McCarran"
-    lat: 36.0840
-    lon: -115.1537
-    icao: "KLAS"
+  SAT:
+    name: "San Antonio International"
+    lat: 29.5337
+    lon: -98.4698
+    icao: "KSAT"
     
-  # Arizona
-  PHX:
-    name: "Phoenix Sky Harbor"
-    lat: 33.4352
-    lon: -112.0101
-    icao: "KPHX"
+  # Louisiana
+  MSY:
+    name: "New Orleans Louis Armstrong"
+    lat: 29.9931
+    lon: -90.2580
+    icao: "KMSY"
     
-  TUS:
-    name: "Tucson International"
-    lat: 32.1161
-    lon: -110.9410
-    icao: "KTUS"
+  # Arkansas
+  LIT:
+    name: "Little Rock National"
+    lat: 34.7294
+    lon: -92.2242
+    icao: "KLIT"
 
 # Collector type definitions
 collector_types:

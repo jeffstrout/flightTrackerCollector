@@ -1,0 +1,57 @@
+# Production configuration using external centralized Redis
+version: '3.8'
+
+services:
+  # Flight Tracker Collector Service
+  collector:
+    build: .
+    container_name: flight_collector
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=shared_redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0  # Flight tracker uses database 0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TZ=${TZ:-America/Los_Angeles}
+      - CONFIG_FILE=collectors.yaml  # Use production config
+    volumes:
+      - ./config:/app/config:ro
+      - flight_logs:/app/logs
+    networks:
+      - shared_services
+    external_links:
+      - shared_redis:shared_redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web API Service
+  web_api:
+    build: .
+    container_name: flight_web_api
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_HOST=shared_redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - shared_services
+    external_links:
+      - shared_redis:shared_redis
+    depends_on:
+      - collector
+
+volumes:
+  flight_logs:
+
+networks:
+  shared_services:
+    external: true

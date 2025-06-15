@@ -4,11 +4,18 @@ vendor/
 venv/
 env/
 .env
+.env.local
+.env.dev
+.env.prod
 
 # Build outputs
 dist/
 build/
 *.egg-info/
+
+# Large data files
+config/aircraftDatabase.csv
+*.csv
 __pycache__/
 *.pyc
 *.pyo

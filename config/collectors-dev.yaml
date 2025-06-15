@@ -1,0 +1,78 @@
+# Development Configuration (Docker Environment)
+# This config is used when running inside Docker containers
+
+# Global settings
+global:
+  redis:
+    host: ${REDIS_HOST:-redis}  # Docker service name
+    port: ${REDIS_PORT:-6379}
+    db: ${REDIS_DB:-0}
+    key_expiry: 3600
+  
+  logging:
+    level: ${LOG_LEVEL:-DEBUG}  # More verbose for dev
+    file: logs/flight_collector.log
+    rotate_time: "00:00"
+    backup_count: 3
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  polling:
+    default_interval: 60  # Slower polling in dev
+    retry_attempts: 3
+    timeout: 10
+    backoff_factor: 2
+
+# Region definitions
+regions:
+  test_region:
+    enabled: true
+    name: "Test Region - Los Angeles"
+    timezone: "America/Los_Angeles"
+    center:
+      lat: 34.0522
+      lon: -118.2437
+    radius_miles: 50  # Smaller radius for testing
+    collectors:
+      - type: "opensky"
+        enabled: true
+        url: "https://opensky-network.org/api/states/all"
+        anonymous: true  # Always anonymous in dev
+        
+      # Mock dump1090 for testing (you'd run this in another container)
+      - type: "dump1090"
+        enabled: false  # Disabled unless you have mock data
+        url: "http://mock-dump1090:8080/data/aircraft.json"
+        name: "Mock ADS-B Receiver"
+
+# Minimal airports for testing
+airports:
+  LAX:
+    name: "Los Angeles International"
+    lat: 33.9425
+    lon: -118.4081
+    icao: "KLAX"
+    
+  BUR:
+    name: "Bob Hope Airport"
+    lat: 34.2007
+    lon: -118.3590
+    icao: "KBUR"
+
+# Collector type definitions
+collector_types:
+  opensky:
+    class: "OpenSkyCollector"
+    rate_limit: 10  # Slower rate for development
+    daily_credits_anonymous: 400
+    daily_credits_authenticated: 4000
+    credit_header: "X-Rate-Limit-Remaining"
+    
+  dump1090:
+    class: "Dump1090Collector"
+    rate_limit: 60  # 1 request per second in dev
+    local: true
+
+# Simplified helicopter patterns for testing
+helicopter_patterns:
+  - aircraft_type: ["H60", "EC35", "R44"]
+  - callsign_contains: ["POLICE", "MEDIC"]
