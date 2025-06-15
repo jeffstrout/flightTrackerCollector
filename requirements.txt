@@ -1,0 +1,10 @@
+redis==5.0.1
+requests==2.31.0
+python-dotenv==1.0.0
+pydantic==2.5.3
+schedule==1.2.0
+tenacity==8.2.3
+pytest==7.4.4
+pytest-asyncio==0.21.1
+black==23.12.1
+flake8==7.0.0
