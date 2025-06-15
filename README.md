@@ -10,7 +10,7 @@ This project aims to collect flight tracking information from various sources an
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/flightTrackerCollector.git
+git clone https://github.com/jeffstrout/flightTrackerCollector.git
 cd flightTrackerCollector
 
 # Install dependencies (to be added)
