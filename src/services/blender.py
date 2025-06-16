@@ -73,48 +73,38 @@ class DataBlender:
     def identify_helicopters(self, aircraft_list: List[Aircraft]) -> List[Aircraft]:
         """Identify helicopters based on patterns"""
         helicopters = []
+        total_checked = 0
+        icao_class_helicopters = 0
+        pattern_helicopters = 0
         
         for aircraft in aircraft_list:
-            if self._is_helicopter(aircraft):
+            total_checked += 1
+            is_helo = self._is_helicopter(aircraft)
+            if is_helo:
                 helicopters.append(aircraft)
+                # Check which method identified it
+                if aircraft.icao_aircraft_class and aircraft.icao_aircraft_class.startswith('H'):
+                    icao_class_helicopters += 1
+                else:
+                    pattern_helicopters += 1
+        
+        logger.info(f"🚁 Helicopter identification: {len(helicopters)}/{total_checked} aircraft | "
+                   f"ICAO class: {icao_class_helicopters} | Pattern: {pattern_helicopters}")
         
         return helicopters
     
     def _is_helicopter(self, aircraft: Aircraft) -> bool:
-        """Check if aircraft matches helicopter patterns"""
-        # Primary check: ICAO aircraft class starts with 'H'
+        """Check if aircraft is a helicopter using ICAO aircraft class only"""
+        # ONLY check ICAO aircraft class - most reliable method
         if aircraft.icao_aircraft_class and aircraft.icao_aircraft_class.startswith('H'):
+            logger.debug(f"✅ Helicopter identified by ICAO class: {aircraft.hex} - {aircraft.icao_aircraft_class}")
             return True
         
-        # Fallback to pattern matching if no ICAO class available
-        for pattern in self.helicopter_patterns:
-            # Check registration prefix (but skip overly broad patterns like "N1")
-            if pattern.prefix and aircraft.registration and len(pattern.prefix) > 2:
-                if aircraft.registration.startswith(pattern.prefix):
-                    return True
-            
-            # Check callsign contains
-            if pattern.callsign_contains and aircraft.flight:
-                flight_upper = aircraft.flight.upper()
-                for keyword in pattern.callsign_contains:
-                    if keyword.upper() in flight_upper:
-                        return True
-            
-            # Check aircraft type
-            if pattern.aircraft_type and aircraft.typecode:
-                if aircraft.typecode in pattern.aircraft_type:
-                    return True
-            
-            # Check ICAO hex prefix
-            if pattern.icao_hex_prefix and aircraft.hex:
-                for prefix in pattern.icao_hex_prefix:
-                    if aircraft.hex.upper().startswith(prefix.upper()):
-                        return True
-            
-            # Check registration suffix
-            if pattern.suffix and aircraft.registration:
-                if aircraft.registration.endswith(pattern.suffix):
-                    return True
+        # Log for debugging when no helicopter detected
+        if aircraft.icao_aircraft_class:
+            logger.debug(f"❌ Not helicopter (ICAO class: {aircraft.icao_aircraft_class}): {aircraft.hex}")
+        else:
+            logger.debug(f"⚠️  No ICAO class for aircraft: {aircraft.hex}")
         
         return False
     
@@ -149,13 +139,21 @@ class DataBlender:
         return score
     
     def _enrich_aircraft_data(self, aircraft_list: List[Aircraft]):
-        """Enrich aircraft with database information"""
+        """Enrich aircraft with database information using batch lookups"""
+        # Batch lookup all hex codes at once
+        hex_codes = [aircraft.hex for aircraft in aircraft_list if aircraft.hex]
+        if not hex_codes:
+            return
+            
+        # Get all aircraft info in one batch operation
+        aircraft_info_batch = self.aircraft_db.batch_lookup_aircraft(hex_codes)
+        
+        # Apply enrichment to each aircraft
         for aircraft in aircraft_list:
             if not aircraft.hex:
                 continue
-            
-            # Look up aircraft info
-            info = self.aircraft_db.lookup_aircraft(aircraft.hex)
+                
+            info = aircraft_info_batch.get(aircraft.hex, {})
             
             # Add database fields to aircraft
             aircraft.registration = info.get('registration', '')

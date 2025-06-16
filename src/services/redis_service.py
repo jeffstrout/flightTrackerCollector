@@ -38,11 +38,9 @@ class RedisService:
         try:
             timestamp = datetime.now().isoformat()
             
-            # Convert aircraft to dictionaries (already enriched by blender)
-            enriched_aircraft = []
-            for aircraft in aircraft_list:
-                aircraft_data = aircraft.dict()
-                enriched_aircraft.append(aircraft_data)
+            # Pre-serialize aircraft data once
+            enriched_aircraft = [aircraft.dict() for aircraft in aircraft_list]
+            helicopter_data = [heli.dict() for heli in helicopters]
             
             # Store all flights
             flights_data = {
@@ -53,12 +51,7 @@ class RedisService:
                 'region': region
             }
             
-            # Store helicopters only (already enriched)
-            helicopter_data = []
-            for heli in helicopters:
-                heli_data = heli.dict()
-                helicopter_data.append(heli_data)
-            
+            # Store helicopters only
             choppers_data = {
                 'timestamp': timestamp,
                 'aircraft_count': len(helicopter_data),

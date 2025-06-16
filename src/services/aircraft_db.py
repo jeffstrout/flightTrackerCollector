@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import os
 from pathlib import Path
 
@@ -177,6 +177,52 @@ class AircraftDatabase:
         self._cache_result(hex_code, result)
         return result
     
+    def batch_lookup_aircraft(self, hex_codes: List[str]) -> Dict[str, Dict[str, str]]:
+        """Batch lookup aircraft information for multiple hex codes"""
+        if not hex_codes:
+            return {}
+        
+        results = {}
+        missing_codes = []
+        
+        # Check cache first for all codes
+        for hex_code in hex_codes:
+            if not hex_code:
+                continue
+            if hex_code in self.aircraft_cache:
+                results[hex_code] = self.aircraft_cache[hex_code]
+                self.cache_stats['hits'] += 1
+            else:
+                missing_codes.append(hex_code)
+                self.cache_stats['misses'] += 1
+        
+        if not missing_codes:
+            return results
+        
+        # Batch Redis lookup for missing codes
+        if self.redis_service:
+            redis_results = self._batch_redis_lookup(missing_codes)
+            for hex_code, result in redis_results.items():
+                if result:
+                    results[hex_code] = result
+                    self._cache_result(hex_code, result)
+                    missing_codes.remove(hex_code)
+        
+        # Fallback to pandas for remaining codes
+        if missing_codes and self.aircraft_db is not None:
+            pandas_results = self._batch_pandas_lookup(missing_codes)
+            for hex_code, result in pandas_results.items():
+                results[hex_code] = result
+                self._cache_result(hex_code, result)
+        
+        # Fill in empty results for any remaining missing codes
+        for hex_code in hex_codes:
+            if hex_code not in results:
+                results[hex_code] = self._empty_result()
+                self._cache_result(hex_code, results[hex_code])
+        
+        return results
+    
     def _redis_lookup(self, hex_code: str) -> Optional[Dict[str, str]]:
         """Look up aircraft in Redis"""
         try:
@@ -223,6 +269,94 @@ class AircraftDatabase:
             logger.error(f"Pandas lookup error for {hex_code}: {e}")
         
         return self._empty_result()
+    
+    def _batch_redis_lookup(self, hex_codes: List[str]) -> Dict[str, Dict[str, str]]:
+        """Batch lookup aircraft in Redis using pipeline"""
+        results = {}
+        try:
+            if not self.redis_service or not self.redis_service.redis_client:
+                return results
+                
+            pipeline = self.redis_service.redis_client.pipeline()
+            
+            # Queue all lookups
+            redis_keys = []
+            for hex_code in hex_codes:
+                hex_upper = hex_code.upper().replace('~', '').strip()
+                redis_key = f"aircraft_db:{hex_upper}"
+                redis_keys.append((hex_code, redis_key))
+                pipeline.hgetall(redis_key)
+            
+            # Execute all lookups at once
+            pipeline_results = pipeline.execute()
+            
+            # Process results
+            for i, (original_hex, redis_key) in enumerate(redis_keys):
+                redis_data = pipeline_results[i] if i < len(pipeline_results) else {}
+                
+                if redis_data:
+                    results[original_hex] = {
+                        'registration': redis_data.get('registration', ''),
+                        'manufacturerName': redis_data.get('manufacturerName', ''),
+                        'model': redis_data.get('model', ''),
+                        'icaoAircraftClass': redis_data.get('icaoAircraftClass', ''),
+                        'typecode': redis_data.get('typecode', ''),
+                        'operator': redis_data.get('operator', ''),
+                        'owner': redis_data.get('owner', '')
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Batch Redis lookup error: {e}")
+            
+        return results
+    
+    def _batch_pandas_lookup(self, hex_codes: List[str]) -> Dict[str, Dict[str, str]]:
+        """Batch lookup aircraft in pandas dataframe"""
+        results = {}
+        try:
+            if self.aircraft_db is None:
+                return results
+                
+            # Clean hex codes for lookup
+            hex_lookup = {}
+            for hex_code in hex_codes:
+                hex_upper = hex_code.upper().replace('~', '').strip()
+                hex_lookup[hex_upper] = hex_code
+            
+            # Get all matching records at once
+            available_codes = set(hex_lookup.keys()) & set(self.aircraft_db.index)
+            
+            if available_codes:
+                batch_data = self.aircraft_db.loc[list(available_codes)]
+                
+                # Handle both single row and multiple rows
+                if isinstance(batch_data, pd.Series):
+                    # Single row case
+                    hex_upper = list(available_codes)[0]
+                    original_hex = hex_lookup[hex_upper]
+                    results[original_hex] = self._extract_aircraft_info(batch_data)
+                else:
+                    # Multiple rows case
+                    for hex_upper, aircraft_info in batch_data.iterrows():
+                        original_hex = hex_lookup[hex_upper]
+                        results[original_hex] = self._extract_aircraft_info(aircraft_info)
+                        
+        except Exception as e:
+            logger.error(f"Batch pandas lookup error: {e}")
+            
+        return results
+    
+    def _extract_aircraft_info(self, aircraft_info) -> Dict[str, str]:
+        """Extract aircraft information from pandas row/series"""
+        return {
+            'registration': self._safe_get(aircraft_info, ['registration', 'Registration', 'reg']),
+            'manufacturerName': self._safe_get(aircraft_info, ['manufacturerName', 'manufacturerIcao', 'manufacturer', 'Manufacturer', 'mfr']),
+            'model': self._safe_get(aircraft_info, ['model', 'Model', 'type']),
+            'icaoAircraftClass': self._safe_get(aircraft_info, ['icaoAircraftClass', 'typecode', 'TypeCode', 'aircraft_type']),
+            'typecode': self._safe_get(aircraft_info, ['typecode', 'TypeCode', 'type_code']),
+            'operator': self._safe_get(aircraft_info, ['operator', 'Operator', 'airline']),
+            'owner': self._safe_get(aircraft_info, ['owner', 'Owner', 'registered_owner'])
+        }
     
     def _safe_get(self, data, possible_keys):
         """Safely get value from data using multiple possible key names"""

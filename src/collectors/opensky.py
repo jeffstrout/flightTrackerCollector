@@ -23,6 +23,7 @@ class OpenSkyCollector(BaseCollector):
         self.last_request_time = 0
         self.min_interval = 10  # Minimum 10 seconds between requests
         self.credits_remaining = None
+        self.last_429_time = 0  # Track when we last got rate limited
         
         # Authentication setup
         self.auth = None
@@ -37,12 +38,28 @@ class OpenSkyCollector(BaseCollector):
         if not self.enabled:
             return None
         
-        # Rate limiting check
+        # Rate limiting check - use 429 time if we're in backoff mode
         current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        if time_since_last < self.min_interval:
-            logger.debug(f"OpenSky rate limit: waiting {self.min_interval - time_since_last:.1f}s")
-            return None
+        
+        # If we're in 5-minute backoff mode after 429, use that timestamp
+        if self.min_interval >= 300 and self.last_429_time > 0:
+            time_since_429 = current_time - self.last_429_time
+            if time_since_429 < self.min_interval:
+                wait_time = self.min_interval - time_since_429
+                logger.info(f"OpenSky 429 backoff active: waiting {wait_time:.1f}s (since 429: {time_since_429:.1f}s)")
+                return None
+            else:
+                # Backoff period is over, reset to normal interval
+                logger.info(f"OpenSky 429 backoff period ended, resetting to normal interval")
+                self.min_interval = 10
+                self.last_429_time = 0
+        else:
+            # Normal rate limiting based on last successful request
+            time_since_last = current_time - self.last_request_time
+            if time_since_last < self.min_interval:
+                wait_time = self.min_interval - time_since_last
+                logger.info(f"OpenSky normal backoff active: waiting {wait_time:.1f}s")
+                return None
         
         fetch_start = time.time()
         
@@ -72,11 +89,13 @@ class OpenSkyCollector(BaseCollector):
                 
                 # Check for rate limit headers
                 self.credits_remaining = response.headers.get('X-Rate-Limit-Remaining')
+                reset_time = response.headers.get('X-Rate-Limit-Reset')
                 if self.credits_remaining:
                     self.credits_remaining = int(self.credits_remaining)
                 
                 data = response.json()
             
+            # Only update last_request_time on successful requests
             self.last_request_time = current_time
             fetch_time = time.time() - fetch_start
             
@@ -97,17 +116,32 @@ class OpenSkyCollector(BaseCollector):
             
             self.update_stats(True, len(aircraft_list))
             
-            credits_msg = f", {self.credits_remaining} credits remaining" if self.credits_remaining else ""
-            logger.info(f"OpenSky: {len(aircraft_list)} aircraft in {fetch_time:.2f}s{credits_msg}")
+            # Enhanced logging with rate limit info
+            rate_info = []
+            if self.credits_remaining is not None:
+                rate_info.append(f"{self.credits_remaining} credits remaining")
+            if reset_time:
+                rate_info.append(f"reset: {reset_time}")
+            
+            rate_msg = f" | {' | '.join(rate_info)}" if rate_info else ""
+            logger.info(f"OpenSky: {len(aircraft_list)} aircraft in {fetch_time:.2f}s{rate_msg}")
             
             return aircraft_list
             
         except httpx.HTTPStatusError as e:
             self.update_stats(False)
             if e.response.status_code == 429:
-                logger.warning(f"OpenSky rate limited: {e}")
-                # Increase minimum interval when rate limited
-                self.min_interval = min(120, self.min_interval * 2)
+                # Check rate limit headers from 429 response
+                remaining = e.response.headers.get('X-Rate-Limit-Remaining', 'unknown')
+                reset_time = e.response.headers.get('X-Rate-Limit-Reset', 'unknown')
+                
+                logger.warning(f"OpenSky rate limited: {e} | Remaining: {remaining} | Reset: {reset_time}")
+                
+                # Set backoff to 5 minutes when rate limited and track when it started
+                old_interval = self.min_interval
+                self.min_interval = 300  # 5 minutes
+                self.last_429_time = current_time  # Remember when we got rate limited
+                logger.warning(f"OpenSky backoff: {old_interval}s → {self.min_interval}s (5 minutes due to rate limit)")
             else:
                 logger.error(f"OpenSky HTTP error {e.response.status_code}: {e}")
             return None

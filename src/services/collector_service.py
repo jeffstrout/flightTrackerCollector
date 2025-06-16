@@ -87,18 +87,14 @@ class CollectorService:
         dump1090_collectors = [c for c in collectors if isinstance(c, Dump1090Collector)]
         opensky_collectors = [c for c in collectors if isinstance(c, OpenSkyCollector)]
         
-        # Collect from dump1090 (always)
-        dump1090_aircraft = []
-        for collector in dump1090_collectors:
-            try:
-                aircraft = await collector.fetch_data()
-                if aircraft:
-                    dump1090_aircraft.extend(aircraft)
-            except Exception as e:
-                logger.error(f"dump1090 collection failed for {region_name}: {e}")
+        # Collect from both sources in parallel
+        collection_tasks = []
         
-        # Collect from OpenSky (with timing control and caching)
-        opensky_aircraft = []
+        # Add dump1090 collection tasks
+        for collector in dump1090_collectors:
+            collection_tasks.append(collector.fetch_data())
+        
+        # Handle OpenSky collection with timing control and caching
         current_time = time.time()
         should_fetch_opensky = (
             region_name not in self.last_opensky_fetch or
@@ -106,22 +102,46 @@ class CollectorService:
         )
         
         if should_fetch_opensky and opensky_collectors:
-            # Fetch new data from OpenSky
+            # Add OpenSky collection tasks
             for collector in opensky_collectors:
-                try:
-                    aircraft = await collector.fetch_data()
-                    logger.info(f"OpenSky collector returned {len(aircraft) if aircraft else 0} aircraft")
-                    if aircraft:
+                collection_tasks.append(collector.fetch_data())
+        
+        # Execute all collection tasks in parallel
+        collection_results = await asyncio.gather(*collection_tasks, return_exceptions=True)
+        
+        # Process results
+        dump1090_aircraft = []
+        opensky_aircraft = []
+        
+        task_index = 0
+        
+        # Process dump1090 results
+        for _ in dump1090_collectors:
+            if task_index < len(collection_results):
+                result = collection_results[task_index]
+                if isinstance(result, Exception):
+                    logger.error(f"dump1090 collection failed for {region_name}: {result}")
+                elif result:
+                    dump1090_aircraft.extend(result)
+            task_index += 1
+        
+        # Process OpenSky results (if fetched)
+        if should_fetch_opensky and opensky_collectors:
+            for _ in opensky_collectors:
+                if task_index < len(collection_results):
+                    result = collection_results[task_index]
+                    if isinstance(result, Exception):
+                        logger.error(f"OpenSky collection failed for {region_name}: {result}")
+                    elif result:
                         # Cache the data for this region
                         self.opensky_data_cache[region_name] = {
-                            'aircraft': aircraft,
+                            'aircraft': result,
                             'timestamp': current_time
                         }
-                        opensky_aircraft.extend(aircraft)
+                        opensky_aircraft.extend(result)
                         self.last_opensky_fetch[region_name] = current_time
-                        logger.info(f"Cached {len(aircraft)} OpenSky aircraft for region {region_name}")
-                except Exception as e:
-                    logger.error(f"OpenSky collection failed for {region_name}: {e}")
+                        logger.info(f"Cached {len(result)} OpenSky aircraft for region {region_name}")
+                task_index += 1
         else:
             # Use cached data if available
             if region_name in self.opensky_data_cache:
