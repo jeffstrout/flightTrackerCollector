@@ -40,6 +40,12 @@ regions:
         anonymous: ${OPENSKY_ANONYMOUS:-true}
         username: ${OPENSKY_USERNAME:-}
         password: ${OPENSKY_PASSWORD:-}
+      
+      # Local ADS-B receiver
+      - type: "dump1090"
+        enabled: true
+        url: "http://192.168.0.13/tar1090/data/aircraft.json"
+        name: "Home ADS-B Receiver"
 
 # Airport database for destination estimation
 airports:
