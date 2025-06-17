@@ -213,6 +213,7 @@ The application uses a centralized Redis instance with database separation:
 - `GET /` - Root endpoint with API information
 - `GET /health` - Health check endpoint
 - `GET /api/v1/status` - System health, collector status, and API rate limits
+- `GET /api/v1/regions` - Returns all configured regions with their collectors
 - `GET /api/v1/{region}/flights` - Returns all flights for a region in JSON format
 - `GET /api/v1/{region}/flights/tabular` - Returns flights in tabular/CSV format
 - `GET /api/v1/{region}/choppers` - Returns helicopters only for a region
