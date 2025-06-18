@@ -1,8 +1,11 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .config.loader import load_config
 from .services.collector_service import CollectorService
@@ -69,6 +72,20 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")
+
+# Setup static file serving for frontend
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Serve config.js at root level
+@app.get("/config.js")
+async def get_config():
+    """Serve frontend configuration with relative API URL"""
+    return {
+        "API_BASE_URL": "/api/v1",
+        "ENV": "production"
+    }
 
 # Add root endpoint
 @app.get("/")

@@ -1,0 +1,96 @@
+{
+  "family": "flight-tracker-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::958933162000:role/flight-tracker-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::958933162000:role/flight-tracker-task-role",
+  "containerDefinitions": [
+    {
+      "name": "web-api",
+      "image": "958933162000.dkr.ecr.us-east-1.amazonaws.com/flight-tracker-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "command": ["/app/scripts/start_with_db.sh", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"],
+      "environment": [
+        {
+          "name": "REDIS_HOST",
+          "value": "flight-tracker-redis.x7nm8u.0001.use1.cache.amazonaws.com"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "REDIS_DB",
+          "value": "0"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "INFO"
+        },
+        {
+          "name": "CONFIG_FILE",
+          "value": "collectors.yaml"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/status || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/flight-tracker",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "web-api"
+        }
+      }
+    },
+    {
+      "name": "collector",
+      "image": "958933162000.dkr.ecr.us-east-1.amazonaws.com/flight-tracker-backend:latest",
+      "essential": true,
+      "command": ["/app/scripts/start_with_db.sh", "python", "-m", "src.cli"],
+      "environment": [
+        {
+          "name": "REDIS_HOST",
+          "value": "flight-tracker-redis.x7nm8u.0001.use1.cache.amazonaws.com"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "REDIS_DB",
+          "value": "0"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "INFO"
+        },
+        {
+          "name": "CONFIG_FILE",
+          "value": "collectors.yaml"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/flight-tracker",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "collector"
+        }
+      }
+    }
+  ]
+}

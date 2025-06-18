@@ -18,9 +18,14 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 # Final stage
 FROM python:3.11-slim
 
-# Install runtime dependencies
+# Install runtime dependencies including AWS CLI
 RUN apt-get update && apt-get install -y \
     curl \
+    unzip \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf awscliv2.zip aws \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -34,6 +39,10 @@ COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY --chown=appuser:appuser . .
+
+# Copy and make download script executable
+COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
+RUN chmod +x /app/scripts/download_aircraft_db.sh
 
 # Create logs directory with proper permissions
 RUN mkdir -p logs && chown -R appuser:appuser logs

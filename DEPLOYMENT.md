@@ -1,128 +1,220 @@
-# Production Deployment Guide
+# AWS Production Deployment Guide
 
-## Prerequisites
-- Docker and Docker Compose installed on production server
-- Access to centralized Redis instance (shared_redis)
-- Git repository cloned on production server
+🌐 **Live Production URLs:**
+- **Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
+- **API Endpoint**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1
+- **API Documentation**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/docs
 
-## Deployment Steps
+## 🏗️ AWS Infrastructure
 
-### 1. Update Production Configuration
+The Flight Tracker Collector is deployed on AWS using:
 
-**IMPORTANT**: The production config (`config/collectors.yaml`) needs your dump1090 receiver added!
+- **ECS Fargate**: Containerized backend services
+- **Application Load Balancer**: Public API access
+- **ElastiCache Redis**: High-performance data caching
+- **ECR**: Container image registry
+- **S3**: Frontend hosting and file storage
+- **CloudWatch**: Logging and monitoring
 
-Edit `config/collectors.yaml` on your production server and add the dump1090 collector:
+### Infrastructure Components
+
+| Service | Resource | Purpose |
+|---------|----------|----------|
+| **ECS Cluster** | `flight-tracker-cluster` | Container orchestration |
+| **ECS Service** | `flight-tracker-backend` | Backend API and data collector |
+| **Load Balancer** | `flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com` | Public API access |
+| **Redis Cluster** | `flight-tracker-redis.x7nm8u.0001.use1.cache.amazonaws.com` | Data caching |
+| **ECR Repository** | `958933162000.dkr.ecr.us-east-1.amazonaws.com/flight-tracker-backend` | Container images |
+| **S3 Bucket** | `flight-tracker-web-ui-1750266711` | Frontend hosting |
+
+## 🚀 Deployment Process
+
+### Option 1: Automated GitHub Actions
+
+1. **Configure GitHub Secrets** (see [GITHUB_SECRETS.md](GITHUB_SECRETS.md))
+2. **Push to main branch** - triggers automatic deployment
+3. **Monitor deployment** in GitHub Actions tab
+
+### Option 2: Manual Deployment
+
+#### Backend Deployment
+
+```bash
+# 1. Build and tag Docker image
+docker build -t flight-tracker-backend .
+docker tag flight-tracker-backend 958933162000.dkr.ecr.us-east-1.amazonaws.com/flight-tracker-backend:latest
+
+# 2. Push to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 958933162000.dkr.ecr.us-east-1.amazonaws.com
+docker push 958933162000.dkr.ecr.us-east-1.amazonaws.com/flight-tracker-backend:latest
+
+# 3. Update ECS service
+aws ecs update-service --cluster flight-tracker-cluster --service flight-tracker-backend --force-new-deployment
+```
+
+#### Frontend Deployment
+
+```bash
+# Upload frontend files to S3
+aws s3 sync frontend-dist/ s3://flight-tracker-web-ui-1750266711/ --delete
+
+# Update configuration
+aws s3 cp config.js s3://flight-tracker-web-ui-1750266711/config.js --content-type="application/javascript"
+```
+
+### Configuration Management
+
+The application uses environment-specific configuration:
 
 ```yaml
+# config/collectors.yaml (Production)
+global:
+  redis:
+    host: flight-tracker-redis.x7nm8u.0001.use1.cache.amazonaws.com
+    port: 6379
+    db: 0
+  logging:
+    level: INFO
+
 regions:
   etex:
+    enabled: true
+    name: "East Texas"
+    center:
+      lat: 32.3513
+      lon: -95.3011
+    radius_miles: 150
     collectors:
       - type: "opensky"
         enabled: true
         url: "https://opensky-network.org/api/states/all"
-        anonymous: ${OPENSKY_ANONYMOUS:-true}
-        username: ${OPENSKY_USERNAME:-}
-        password: ${OPENSKY_PASSWORD:-}
-      
-      # Add your dump1090 receiver
       - type: "dump1090"
         enabled: true
         url: "http://192.168.0.13/tar1090/data/aircraft.json"
-        name: "Home ADS-B Receiver"
 ```
 
-### 2. Pull Latest Code
+## 🔍 Monitoring & Verification
+
+### Health Checks
 
 ```bash
-cd /path/to/flightTrackerCollector
-git pull origin main
+# Backend health
+curl http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/health
+
+# System status
+curl http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1/status
+
+# Available regions
+curl http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1/regions
+
+# Live flight data
+curl http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1/etex/flights
 ```
 
-### 3. Stop Existing Containers (if running)
+### AWS Monitoring
 
 ```bash
-docker-compose -f docker-compose.prod.yml down
+# Check ECS service status
+aws ecs describe-services --cluster flight-tracker-cluster --services flight-tracker-backend
+
+# View container logs
+aws logs tail /ecs/flight-tracker --follow
+
+# Check Redis cluster health
+aws elasticache describe-cache-clusters --cache-cluster-id flight-tracker-redis
 ```
 
-### 4. Build New Images
+### Performance Metrics
 
-```bash
-docker-compose -f docker-compose.prod.yml build
-```
+- **Response Time**: API endpoints typically respond in <200ms
+- **Data Collection**: Updates every 15-60 seconds depending on source
+- **Cache Hit Rate**: Monitor Redis statistics via `/api/v1/status`
+- **Aircraft Count**: Typically 200-300 aircraft in East Texas region
 
-### 5. Start Services
+## 🔧 Configuration Updates
 
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
+### Adding New Regions
 
-### 6. Verify Deployment
+1. Edit `config/collectors.yaml`
+2. Deploy updated configuration
+3. Monitor logs for new region initialization
 
-```bash
-# Check container status
-docker-compose -f docker-compose.prod.yml ps
+### Adding Data Sources
 
-# Check logs
-docker-compose -f docker-compose.prod.yml logs -f
-
-# Test API endpoints
-curl http://localhost:8000/health
-curl http://localhost:8000/api/v1/status
-curl http://localhost:8000/api/v1/regions
-```
-
-## Configuration Management
-
-### Option 1: Create Production-Specific Config
-Create `config/collectors-prod.yaml` with your production settings:
-```bash
-cp config/collectors-local.yaml config/collectors-prod.yaml
-# Edit to adjust for production (change Redis host, logging level, etc.)
-```
-
-Then update `docker-compose.prod.yml`:
 ```yaml
-environment:
-  - CONFIG_FILE=collectors-prod.yaml
+# Add dump1090 receiver
+collectors:
+  - type: "dump1090"
+    enabled: true
+    url: "http://your-receiver-ip/tar1090/data/aircraft.json"
+    name: "Your ADS-B Receiver"
 ```
 
-### Option 2: Use Environment Variables
-Keep sensitive data in `.env` file on production:
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `REDIS_HOST` | Redis cluster endpoint | `flight-tracker-redis.x7nm8u.0001.use1.cache.amazonaws.com` |
+| `LOG_LEVEL` | Logging verbosity | `INFO` |
+| `CONFIG_FILE` | Configuration file | `collectors.yaml` |
+| `OPENSKY_USERNAME` | OpenSky API username | (optional) |
+| `OPENSKY_PASSWORD` | OpenSky API password | (optional) |
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+#### 1. Frontend Shows "Offline"
+- **Cause**: Frontend can't connect to backend API
+- **Fix**: Check ALB URL in `config.js` configuration
+- **Verify**: Test backend API directly
+
+#### 2. No Aircraft Data
+- **Cause**: Data collectors not working or Redis connectivity issues
+- **Fix**: Check ECS logs for collector errors
+- **Verify**: Test OpenSky API and dump1090 endpoints
+
+#### 3. Aircraft Missing Enrichment Data
+- **Cause**: Aircraft database not loaded
+- **Fix**: See [AWS_DEPLOYMENT_FIX.md](AWS_DEPLOYMENT_FIX.md)
+- **Verify**: Check for registration, model, operator fields
+
+#### 4. High API Response Times
+- **Cause**: Redis cache issues or high load
+- **Fix**: Check Redis cluster performance
+- **Verify**: Monitor cache hit rates
+
+### Log Analysis
+
 ```bash
-# .env file (DO NOT COMMIT)
-OPENSKY_USERNAME=your_username
-OPENSKY_PASSWORD=your_password
-REDIS_HOST=shared_redis
-LOG_LEVEL=INFO
+# Search for errors
+aws logs filter-log-events --log-group-name /ecs/flight-tracker --filter-pattern "ERROR"
+
+# Monitor data collection
+aws logs filter-log-events --log-group-name /ecs/flight-tracker --filter-pattern "Blend Stats"
+
+# Check aircraft database loading
+aws logs filter-log-events --log-group-name /ecs/flight-tracker --filter-pattern "aircraft database"
 ```
 
-## Network Considerations
+## 🛡️ Security
 
-If your dump1090 receiver at `192.168.0.13` is not accessible from the Docker container:
+- **API Access**: Public read-only endpoints
+- **AWS IAM**: Minimal required permissions
+- **Network**: ALB security groups restrict access
+- **Data**: No sensitive information stored or transmitted
+- **Redis**: Private subnet, VPC-only access
 
-1. **If on same network**: No changes needed
-2. **If on different network**: Use public IP or VPN
-3. **If running on same host**: Use `host.docker.internal` (Docker Desktop) or actual host IP
+## 🔄 Backup & Recovery
 
-## Monitoring
+- **Configuration**: Stored in Git repository
+- **Aircraft Database**: Automatically reloaded on startup
+- **Redis Data**: TTL-based, no persistent storage needed
+- **Logs**: Retained for 30 days in CloudWatch
 
-- Logs are stored in a Docker volume: `flight_logs`
-- Access logs: `docker-compose -f docker-compose.prod.yml exec collector tail -f /app/logs/flight_collector.log`
-- The application will automatically rotate logs at midnight
+## 📈 Scaling
 
-## Troubleshooting
-
-### Container won't start
-- Check logs: `docker-compose -f docker-compose.prod.yml logs collector`
-- Verify Redis connectivity
-- Ensure shared_services network exists
-
-### No data from dump1090
-- Verify the URL is accessible from production server
-- Check firewall rules
-- Test with curl: `curl http://192.168.0.13/tar1090/data/aircraft.json`
-
-### API not accessible
-- Check port 8000 is not already in use
-- Verify firewall allows port 8000
-- Check container is running: `docker ps`
+- **Horizontal**: Add more ECS tasks
+- **Vertical**: Increase CPU/memory allocation
+- **Redis**: Upgrade cluster instance type
+- **Regional**: Deploy in multiple AWS regions
