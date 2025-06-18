@@ -35,6 +35,9 @@ COPY --from=builder /root/.local /home/appuser/.local
 # Copy application code
 COPY --chown=appuser:appuser . .
 
+# Create logs directory with proper permissions
+RUN mkdir -p logs && chown -R appuser:appuser logs
+
 # Make sure scripts are executable
 RUN chmod +x /home/appuser/.local/bin/*
 
@@ -43,9 +46,6 @@ USER appuser
 
 # Add local bin to PATH
 ENV PATH=/home/appuser/.local/bin:$PATH
-
-# Create logs directory
-RUN mkdir -p logs
 
 # Expose port for FastAPI
 EXPOSE 8000
