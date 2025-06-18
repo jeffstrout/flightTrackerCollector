@@ -1,0 +1,167 @@
+name: Deploy Backend to AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Get Redis endpoint
+      id: redis
+      run: |
+        REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters \
+          --cache-cluster-id ${{ secrets.REDIS_CLUSTER_ID }} \
+          --show-cache-node-info \
+          --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' \
+          --output text)
+        echo "endpoint=$REDIS_ENDPOINT" >> $GITHUB_OUTPUT
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: flight-tracker-backend
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+    - name: Update ECS task definition
+      id: task-def
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: flight-tracker-backend
+        IMAGE_TAG: ${{ github.sha }}
+        REDIS_ENDPOINT: ${{ steps.redis.outputs.endpoint }}
+      run: |
+        cat > task-definition.json <<EOF
+        {
+          "family": "flight-tracker-backend",
+          "networkMode": "awsvpc",
+          "requiresCompatibilities": ["FARGATE"],
+          "cpu": "512",
+          "memory": "1024",
+          "executionRoleArn": "${{ secrets.TASK_EXEC_ROLE_ARN }}",
+          "containerDefinitions": [
+            {
+              "name": "web-api",
+              "image": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
+              "essential": true,
+              "portMappings": [
+                {
+                  "containerPort": 8000,
+                  "protocol": "tcp"
+                }
+              ],
+              "environment": [
+                {
+                  "name": "REDIS_HOST",
+                  "value": "$REDIS_ENDPOINT"
+                },
+                {
+                  "name": "REDIS_PORT",
+                  "value": "6379"
+                },
+                {
+                  "name": "REDIS_DB",
+                  "value": "0"
+                },
+                {
+                  "name": "LOG_LEVEL",
+                  "value": "INFO"
+                },
+                {
+                  "name": "CONFIG_FILE",
+                  "value": "collectors.yaml"
+                }
+              ],
+              "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/status || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+              },
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "${{ secrets.LOG_GROUP }}",
+                  "awslogs-region": "${{ env.AWS_REGION }}",
+                  "awslogs-stream-prefix": "web-api"
+                }
+              }
+            },
+            {
+              "name": "collector",
+              "image": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
+              "essential": true,
+              "command": ["python", "-m", "src.main"],
+              "environment": [
+                {
+                  "name": "REDIS_HOST",
+                  "value": "$REDIS_ENDPOINT"
+                },
+                {
+                  "name": "REDIS_PORT",
+                  "value": "6379"
+                },
+                {
+                  "name": "REDIS_DB",
+                  "value": "0"
+                },
+                {
+                  "name": "LOG_LEVEL",
+                  "value": "INFO"
+                },
+                {
+                  "name": "CONFIG_FILE",
+                  "value": "collectors.yaml"
+                }
+              ],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "${{ secrets.LOG_GROUP }}",
+                  "awslogs-region": "${{ env.AWS_REGION }}",
+                  "awslogs-stream-prefix": "collector"
+                }
+              }
+            }
+          ]
+        }
+        EOF
+
+    - name: Deploy to Amazon ECS
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        service: flight-tracker-backend
+        cluster: ${{ secrets.ECS_CLUSTER }}
+        wait-for-service-stability: true
+
+    - name: Deployment Summary
+      run: |
+        echo "✅ Backend deployment complete!"
+        echo "API URL: http://${{ secrets.ALB_DNS }}"
