@@ -15,7 +15,25 @@ class AircraftDatabase:
         self.aircraft_cache = {}
         self.cache_stats = {'hits': 0, 'misses': 0}
         self.aircraft_db = None
-        self.db_file = Path(__file__).parent.parent.parent / "config" / "aircraftDatabase.csv"
+        
+        # Try multiple possible paths for the CSV file
+        possible_paths = [
+            Path(__file__).parent.parent.parent / "config" / "aircraftDatabase.csv",  # Local development
+            Path("/app/config/aircraftDatabase.csv"),  # Docker container
+            Path("config/aircraftDatabase.csv"),  # Current directory
+            Path("aircraftDatabase.csv")  # Same directory as script
+        ]
+        
+        self.db_file = None
+        for path in possible_paths:
+            if path.exists():
+                self.db_file = path
+                break
+        
+        if not self.db_file:
+            logger.warning(f"Aircraft database CSV not found in any of these locations: {[str(p) for p in possible_paths]}")
+        else:
+            logger.info(f"Found aircraft database at: {self.db_file}")
         
         logger.info(f"Initializing aircraft database service")
         self.setup_database()
@@ -24,14 +42,19 @@ class AircraftDatabase:
         """Setup aircraft database - try Redis first, then fallback to CSV"""
         # Check if we have aircraft data in Redis
         if self.redis_service and self._check_redis_database():
-            logger.info("Using aircraft database from Redis")
+            logger.info("✅ Using aircraft database from Redis")
             return
         
         # Otherwise, load from CSV and optionally import to Redis
         if self._load_csv_database():
             if self.redis_service:
-                logger.info("Importing aircraft database to Redis for faster lookups")
+                logger.info("📤 Importing aircraft database to Redis for faster lookups")
                 self._import_to_redis()
+            else:
+                logger.info("✅ Aircraft database loaded from CSV (Redis not available)")
+        else:
+            logger.warning("⚠️  No aircraft database available - aircraft enrichment will be limited")
+            logger.warning("   Flight tracking will continue but without registration, model, operator data")
     
     def _check_redis_database(self) -> bool:
         """Check if aircraft database exists in Redis"""
@@ -49,8 +72,9 @@ class AircraftDatabase:
     def _load_csv_database(self) -> bool:
         """Load aircraft database from CSV file"""
         try:
-            if not os.path.exists(self.db_file):
+            if not self.db_file or not self.db_file.exists():
                 logger.error(f"Aircraft database file not found: {self.db_file}")
+                logger.info("Application will continue without aircraft database enrichment")
                 return False
             
             logger.info(f"Loading aircraft database from {self.db_file}")
@@ -105,7 +129,7 @@ class AircraftDatabase:
     
     def _import_to_redis(self):
         """Import CSV database to Redis"""
-        if not self.aircraft_db is not None or not self.redis_service:
+        if self.aircraft_db is None or not self.redis_service:
             return
         
         try:

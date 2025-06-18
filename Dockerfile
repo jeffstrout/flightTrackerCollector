@@ -38,6 +38,15 @@ COPY --chown=appuser:appuser . .
 # Create logs directory with proper permissions
 RUN mkdir -p logs && chown -R appuser:appuser logs
 
+# Verify aircraft database file exists and is readable
+RUN if [ -f config/aircraftDatabase.csv ]; then \
+        echo "Aircraft database found: $(wc -l < config/aircraftDatabase.csv) lines"; \
+        ls -la config/aircraftDatabase.csv; \
+    else \
+        echo "WARNING: Aircraft database not found at config/aircraftDatabase.csv"; \
+        ls -la config/; \
+    fi
+
 # Make sure scripts are executable
 RUN chmod +x /home/appuser/.local/bin/*
 
