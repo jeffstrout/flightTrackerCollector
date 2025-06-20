@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/flight-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Real-time helicopter and aircraft tracking dashboard with interactive map" />
+    <title>Chopper Tracker - Live Aircraft Dashboard</title>
+    
+    <!-- Preload critical fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""/>
+      
+    <!-- API Configuration -->
+    <script src="/config.js"></script>
+    
+    <style>
+      /* Prevent FOUC and ensure proper loading states */
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+      
+      #root {
+        height: 100%;
+        min-height: 100vh;
+      }
+      
+      /* Loading spinner */
+      .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background: #f8fafc;
+      }
+      
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e2e8f0;
+        border-top: 4px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* Dark mode support */
+      @media (prefers-color-scheme: dark) {
+        .loading-spinner {
+          background: #0f172a;
+        }
+        .spinner {
+          border-color: #334155;
+          border-top-color: #60a5fa;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-5F7dE-or.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-B9Ud1GOj.js">
+    <link rel="modulepreload" crossorigin href="/assets/leaflet-Cx9d608M.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-D4L41Owo.css">
+  </head>
+  <body>
+    <div id="root">
+      <!-- Loading fallback -->
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </body>
+</html>

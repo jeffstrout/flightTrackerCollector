@@ -96,6 +96,22 @@ class RedisService:
         except Exception as e:
             logger.error(f"Failed to store region data in Redis: {e}")
     
+    def store_data(self, key: str, data: Dict, ttl: int = 300):
+        """Store arbitrary data with TTL"""
+        try:
+            if self.redis_client:
+                self.redis_client.setex(key, ttl, json.dumps(data))
+            else:
+                self.memory_store[key] = data
+            logger.debug(f"Stored data at key: {key}")
+        except Exception as e:
+            logger.error(f"Failed to store data at key {key}: {e}")
+    
+    def store_region_data(self, region: str, data_type: str, data: Dict, ttl: int = 300):
+        """Store region data of a specific type"""
+        key = f"{region}:{data_type}"
+        self.store_data(key, data, ttl)
+    
     def get_region_data(self, region: str, data_type: str = "flights") -> Optional[Dict]:
         """Get stored aircraft data for a region"""
         key = f"{region}:{data_type}"

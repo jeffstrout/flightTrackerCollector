@@ -96,6 +96,14 @@ jobs:
                 {
                   "name": "CONFIG_FILE",
                   "value": "collectors.yaml"
+                },
+                {
+                  "name": "COLLECTOR_REGION",
+                  "value": "etex"
+                },
+                {
+                  "name": "VALID_API_KEYS",
+                  "value": "etex.development123testing456"
                 }
               ],
               "healthCheck": {
@@ -139,6 +147,14 @@ jobs:
                 {
                   "name": "CONFIG_FILE",
                   "value": "collectors.yaml"
+                },
+                {
+                  "name": "COLLECTOR_REGION",
+                  "value": "etex"
+                },
+                {
+                  "name": "VALID_API_KEYS",
+                  "value": "etex.development123testing456"
                 }
               ],
               "logConfiguration": {

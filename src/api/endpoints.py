@@ -1,18 +1,23 @@
 import csv
 import io
+import uuid
 from pathlib import Path
 from typing import Dict, List
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, Header, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+from datetime import datetime
 
 from ..services.redis_service import RedisService
 from ..services.collector_service import CollectorService
+from ..services.api_key_service import ApiKeyService
 from ..models.aircraft import AircraftResponse
+from ..models.api_key import BulkAircraftRequest, BulkAircraftResponse
 from ..config.loader import load_config
 
 router = APIRouter()
 redis_service = RedisService()
+api_key_service = ApiKeyService()
 
 
 class CollectorInfo(BaseModel):
@@ -455,3 +460,159 @@ async def get_logs(lines: int = 100) -> str:
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading log file {log_file}: {str(e)}")
+
+
+@router.post("/aircraft/bulk", response_model=BulkAircraftResponse)
+async def receive_bulk_aircraft_data(
+    request: BulkAircraftRequest,
+    x_api_key: str = Header(None, alias="X-API-Key")
+) -> BulkAircraftResponse:
+    """Receive bulk aircraft data from Pi stations
+    
+    This endpoint allows Raspberry Pi stations to submit aircraft data
+    using regional API keys for authentication and validation.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    request_id = str(uuid.uuid4())[:8]
+    
+    # Validate API key
+    validation_result = api_key_service.validate_api_key(x_api_key)
+    if not validation_result.is_valid:
+        logger.warning(f"[{request_id}] API key validation failed: {validation_result.message}")
+        
+        # Determine appropriate HTTP status code
+        status_code = 401  # Unauthorized
+        if validation_result.error_code == "REGION_MISMATCH":
+            status_code = 403  # Forbidden
+        
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "status": "error",
+                "error_code": validation_result.error_code,
+                "message": validation_result.message,
+                "details": {
+                    "collector_region": api_key_service.get_collector_region(),
+                    "provided_key_region": x_api_key.split('.')[0] if x_api_key and '.' in x_api_key else None,
+                    "request_id": request_id
+                }
+            }
+        )
+    
+    masked_key = api_key_service.mask_api_key(x_api_key)
+    logger.info(f"[{request_id}] Processing bulk aircraft data from station '{request.station_name}' "
+                f"(ID: {request.station_id}) with key {masked_key}")
+    
+    processed_count = 0
+    errors = []
+    
+    try:
+        # Process aircraft data
+        if not request.aircraft:
+            logger.warning(f"[{request_id}] No aircraft data provided")
+            return BulkAircraftResponse(
+                status="warning",
+                message="No aircraft data provided",
+                aircraft_count=0,
+                processed_count=0,
+                request_id=request_id
+            )
+        
+        # Store aircraft data in Redis with station metadata
+        redis_key = f"pi_data:{api_key_service.get_collector_region()}:{request.station_id}"
+        
+        # Enrich aircraft data with station information
+        enriched_aircraft = []
+        for aircraft in request.aircraft:
+            try:
+                # Add station metadata to aircraft data
+                enriched_aircraft_data = {
+                    **aircraft,
+                    "data_source": f"pi_station_{request.station_id}",
+                    "station_name": request.station_name,
+                    "station_id": request.station_id,
+                    "received_at": datetime.utcnow().isoformat(),
+                    "region": api_key_service.get_collector_region()
+                }
+                enriched_aircraft.append(enriched_aircraft_data)
+                processed_count += 1
+                
+            except Exception as e:
+                error_msg = f"Error processing aircraft {aircraft.get('hex', 'unknown')}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(f"[{request_id}] {error_msg}")
+        
+        # Store processed data in Redis
+        station_data = {
+            "station_id": request.station_id,
+            "station_name": request.station_name,
+            "timestamp": request.timestamp.isoformat(),
+            "aircraft_count": len(enriched_aircraft),
+            "aircraft": enriched_aircraft,
+            "metadata": request.metadata or {},
+            "request_id": request_id
+        }
+        
+        # Store with TTL (5 minutes like other flight data)
+        redis_service.store_data(redis_key, station_data, ttl=300)
+        
+        # Also merge with main region data for immediate availability
+        region = api_key_service.get_collector_region()
+        existing_data = redis_service.get_region_data(region, "flights") or {"aircraft": []}
+        
+        # Merge Pi station data with existing data
+        all_aircraft = existing_data.get("aircraft", []) + enriched_aircraft
+        
+        # Update region data with merged aircraft list
+        merged_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "aircraft_count": len(all_aircraft),
+            "aircraft": all_aircraft,
+            "data_sources": ["pi_stations", "collectors"],
+            "last_pi_update": request.timestamp.isoformat()
+        }
+        
+        # Store merged data
+        redis_service.store_region_data(region, "flights", merged_data)
+        
+        logger.info(f"[{request_id}] Successfully processed {processed_count}/{len(request.aircraft)} "
+                   f"aircraft from station {request.station_name}")
+        
+        return BulkAircraftResponse(
+            status="success",
+            message=f"Successfully processed {processed_count} aircraft from station {request.station_name}",
+            aircraft_count=len(request.aircraft),
+            processed_count=processed_count,
+            errors=errors,
+            request_id=request_id
+        )
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] Error processing bulk aircraft data: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "error",
+                "error_code": "PROCESSING_ERROR",
+                "message": f"Error processing aircraft data: {str(e)}",
+                "request_id": request_id
+            }
+        )
+
+
+@router.get("/admin/api-keys/stats")
+async def get_api_key_stats() -> Dict:
+    """Get API key statistics for the current collector region"""
+    return api_key_service.get_api_key_stats()
+
+
+@router.get("/admin/region")
+async def get_collector_region() -> Dict:
+    """Get the current collector region configuration"""
+    return {
+        "collector_region": api_key_service.get_collector_region(),
+        "description": f"This collector accepts data for the '{api_key_service.get_collector_region()}' region",
+        "api_key_format": f"{api_key_service.get_collector_region()}.{{random_string}}",
+        "bulk_endpoint": "/api/v1/aircraft/bulk"
+    }
