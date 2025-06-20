@@ -76,12 +76,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
+    expose_headers=["*"],
 )
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")
+
+# Manual CORS preflight handler for additional coverage
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle CORS preflight requests"""
+    return {"status": "ok"}
 
 # Setup static file serving for frontend
 static_dir = Path(__file__).parent.parent / "static"
