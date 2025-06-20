@@ -43,7 +43,18 @@ jobs:
         ECR_REPOSITORY: flight-tracker-backend
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        # Get build-time version information
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        BUILD_CLEAN=$([ -z "$(git status --porcelain)" ] && echo "true" || echo "false")
+        
+        # Build with version information
+        docker build \
+          --build-arg BUILD_COMMIT=${{ github.sha }} \
+          --build-arg BUILD_BRANCH=${{ github.ref_name }} \
+          --build-arg BUILD_TIME="$BUILD_TIME" \
+          --build-arg BUILD_CLEAN="$BUILD_CLEAN" \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest

@@ -1,16 +1,19 @@
 import asyncio
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from .config.loader import load_config
 from .services.collector_service import CollectorService
 from .api.endpoints import router
 from .utils.logging_config import setup_logging
+from .version import VERSION_INFO
 
 
 # Global collector service instance
@@ -24,6 +27,10 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logging.info("Starting Flight Tracker Collector API")
+    logging.info(f"Flight Tracker Collector v{VERSION_INFO['version']}")
+    logging.info(f"Git commit: {VERSION_INFO['commit']} ({VERSION_INFO['branch']})")
+    logging.info(f"Build time: {VERSION_INFO['build_time']}")
+    logging.info(f"Clean build: {VERSION_INFO['clean']}")
     
     try:
         # Load configuration
@@ -57,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Flight Tracker Collector",
     description="Collects and aggregates flight data from multiple sources",
-    version="1.0.0",
+    version=VERSION_INFO['version'],
     lifespan=lifespan
 )
 
@@ -96,13 +103,18 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Serve config.js at root level
-@app.get("/config.js")
+@app.get("/config.js", response_class=PlainTextResponse)
 async def get_config():
-    """Serve frontend configuration with relative API URL"""
-    return {
-        "API_BASE_URL": "/api/v1",
-        "ENV": "production"
-    }
+    """Serve frontend configuration with version info"""
+    config_js = f"""
+window.FLIGHT_TRACKER_CONFIG = {{
+    API_BASE_URL: '/api/v1',
+    ENV: 'production',
+    VERSION: {json.dumps(VERSION_INFO)},
+    CACHE_BUST: '{int(time.time())}'
+}};
+"""
+    return config_js
 
 # Add root endpoint
 @app.get("/")
@@ -110,7 +122,7 @@ async def root():
     """Root endpoint"""
     return {
         "message": "Flight Tracker Collector API",
-        "version": "1.0.0",
+        "version": VERSION_INFO['version'],
         "docs": "/docs",
         "status": "/api/v1/status"
     }

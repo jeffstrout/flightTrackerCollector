@@ -14,6 +14,7 @@ from ..services.api_key_service import ApiKeyService
 from ..models.aircraft import AircraftResponse
 from ..models.api_key import BulkAircraftRequest, BulkAircraftResponse
 from ..config.loader import load_config
+from ..version import VERSION_INFO
 
 router = APIRouter()
 redis_service = RedisService()
@@ -96,6 +97,7 @@ async def get_status() -> Dict:
     
     return {
         "status": "healthy",
+        "version": VERSION_INFO,
         "timestamp": redis_service.redis_client.time()[0] if redis_service.redis_client else None,
         "redis": redis_status,
         "collectors": collector_stats

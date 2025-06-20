@@ -107,7 +107,7 @@ class RedisService:
         except Exception as e:
             logger.error(f"Failed to store data at key {key}: {e}")
     
-    def store_region_data(self, region: str, data_type: str, data: Dict, ttl: int = 300):
+    def store_region_data_generic(self, region: str, data_type: str, data: Dict, ttl: int = 300):
         """Store region data of a specific type"""
         key = f"{region}:{data_type}"
         self.store_data(key, data, ttl)

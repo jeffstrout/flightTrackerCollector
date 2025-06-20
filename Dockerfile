@@ -37,6 +37,12 @@ WORKDIR /app
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/appuser/.local
 
+# Set build arguments for version info
+ARG BUILD_COMMIT=unknown
+ARG BUILD_BRANCH=unknown  
+ARG BUILD_TIME=unknown
+ARG BUILD_CLEAN=true
+
 # Copy application code
 COPY --chown=appuser:appuser . .
 
@@ -65,6 +71,12 @@ USER appuser
 
 # Add local bin to PATH
 ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Set build environment variables
+ENV BUILD_COMMIT=$BUILD_COMMIT
+ENV BUILD_BRANCH=$BUILD_BRANCH
+ENV BUILD_TIME=$BUILD_TIME
+ENV BUILD_CLEAN=$BUILD_CLEAN
 
 # Expose port for FastAPI
 EXPOSE 8000
