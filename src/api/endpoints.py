@@ -584,7 +584,7 @@ async def receive_bulk_aircraft_data(
         }
         
         # Store merged data
-        redis_service.store_region_data(region, "flights", merged_data)
+        redis_service.store_region_data_generic(region, "flights", merged_data)
         
         logger.info(f"[{request_id}] Successfully processed {processed_count}/{len(request.aircraft)} "
                    f"aircraft from station {request.station_name}")
