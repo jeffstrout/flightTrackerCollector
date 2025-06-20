@@ -64,6 +64,7 @@ jobs:
           "cpu": "512",
           "memory": "1024",
           "executionRoleArn": "${{ secrets.TASK_EXEC_ROLE_ARN }}",
+          "taskRoleArn": "arn:aws:iam::958933162000:role/flight-tracker-task-role",
           "containerDefinitions": [
             {
               "name": "web-api",
