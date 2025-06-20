@@ -1,12 +1,12 @@
 #!/bin/bash
-# Startup script that downloads aircraft database then starts the application
+# Startup script that downloads all configuration files then starts the application
 
 set -e
 
-echo "🚀 Starting Flight Tracker with Aircraft Database"
+echo "🚀 Starting Flight Tracker with Configuration Setup"
 
-# Download aircraft database from S3
-/app/scripts/download_aircraft_db.sh
+# Download all configuration files from S3
+/app/scripts/download_config.sh
 
 # Start the application with passed arguments
 echo "🎯 Starting application: $@"

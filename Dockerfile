@@ -42,7 +42,8 @@ COPY --chown=appuser:appuser . .
 
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
-RUN chmod +x /app/scripts/download_aircraft_db.sh
+COPY --chown=appuser:appuser scripts/download_config.sh /app/scripts/
+RUN chmod +x /app/scripts/download_aircraft_db.sh /app/scripts/download_config.sh
 
 # Create logs directory with proper permissions
 RUN mkdir -p logs && chown -R appuser:appuser logs
