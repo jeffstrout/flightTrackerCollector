@@ -143,12 +143,25 @@ class ApiKeyService:
                 error_code="KEY_INACTIVE"
             )
         
-        if key_info.expires_at and key_info.expires_at < datetime.utcnow():
-            return ApiKeyValidationResult(
-                is_valid=False,
-                message="API key has expired",
-                error_code="KEY_EXPIRED"
-            )
+        if key_info.expires_at:
+            # Handle timezone-aware vs naive datetime comparison
+            now = datetime.utcnow()
+            expires_at = key_info.expires_at
+            
+            # If expires_at has timezone info, make now timezone-aware too
+            if hasattr(expires_at, 'tzinfo') and expires_at.tzinfo is not None:
+                from datetime import timezone
+                now = now.replace(tzinfo=timezone.utc)
+            # If expires_at is timezone-naive but now is aware, make expires_at aware
+            elif hasattr(now, 'tzinfo') and now.tzinfo is not None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            
+            if expires_at < now:
+                return ApiKeyValidationResult(
+                    is_valid=False,
+                    message="API key has expired",
+                    error_code="KEY_EXPIRED"
+                )
         
         # Valid key
         self.logger.debug(f"Valid API key used: {request_api_key[:8]}...{request_api_key[-4:]}")
