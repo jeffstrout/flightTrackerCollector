@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..models.api_key import ApiKeyInfo, ApiKeyValidationResult
+from ..config.loader import load_config
 
 
 class ApiKeyService:
@@ -18,50 +19,65 @@ class ApiKeyService:
         self.logger.info(f"ApiKeyService initialized for region '{self.collector_region}' with {len(self.valid_api_keys)} keys")
     
     def _load_api_keys(self) -> Dict[str, ApiKeyInfo]:
-        """Load API keys from environment or file"""
+        """Load API keys from configuration file"""
         api_keys = {}
         
-        # Try loading from file first
-        api_keys_file = os.getenv('API_KEYS_FILE', '/etc/collector/api-keys.json')
-        if Path(api_keys_file).exists():
-            try:
-                with open(api_keys_file, 'r') as f:
-                    data = json.load(f)
-                    for key_data in data.get('api_keys', []):
-                        api_key_info = ApiKeyInfo(**key_data)
-                        api_keys[api_key_info.key] = api_key_info
-                self.logger.info(f"Loaded {len(api_keys)} API keys from file: {api_keys_file}")
+        try:
+            # Load configuration from S3/file
+            config = load_config()
+            
+            # Get region configuration
+            region_config = config.regions.get(self.collector_region)
+            if not region_config:
+                self.logger.error(f"Region '{self.collector_region}' not found in configuration")
                 return api_keys
-            except Exception as e:
-                self.logger.warning(f"Failed to load API keys from file {api_keys_file}: {e}")
-        
-        # Fallback to environment variable
-        env_keys = os.getenv('VALID_API_KEYS', '')
-        if env_keys:
-            for key in env_keys.split(','):
-                key = key.strip()
-                if key:
-                    # Create basic key info for environment-based keys
-                    api_key_info = ApiKeyInfo(
-                        key=key,
-                        name=f"Environment Key {key[:8]}...",
-                        description="API key loaded from environment variable",
-                        created_at=datetime.utcnow()
-                    )
-                    api_keys[key] = api_key_info
-            self.logger.info(f"Loaded {len(api_keys)} API keys from environment")
-        
-        # Default development key for testing
-        if not api_keys and self.collector_region == 'etex':
-            default_key = f"{self.collector_region}.development123testing456"
-            api_key_info = ApiKeyInfo(
-                key=default_key,
-                name="Development Key",
-                description="Default development API key - REMOVE IN PRODUCTION",
-                created_at=datetime.utcnow()
-            )
-            api_keys[default_key] = api_key_info
-            self.logger.warning(f"Using default development API key: {default_key}")
+            
+            # Get Pi station configuration
+            pi_stations_config = getattr(region_config, 'pi_stations', None)
+            if not pi_stations_config or not getattr(pi_stations_config, 'enabled', False):
+                self.logger.warning(f"Pi stations not enabled for region '{self.collector_region}'")
+                return api_keys
+            
+            # Load API keys from configuration
+            api_keys_list = getattr(pi_stations_config, 'api_keys', [])
+            for key_data in api_keys_list:
+                try:
+                    # Convert dict-like object to dict if needed
+                    if hasattr(key_data, '__dict__'):
+                        key_dict = key_data.__dict__
+                    else:
+                        key_dict = dict(key_data)
+                    
+                    # Parse datetime strings
+                    if 'created_at' in key_dict and isinstance(key_dict['created_at'], str):
+                        key_dict['created_at'] = datetime.fromisoformat(key_dict['created_at'].replace('Z', '+00:00'))
+                    
+                    if 'expires_at' in key_dict and isinstance(key_dict['expires_at'], str):
+                        key_dict['expires_at'] = datetime.fromisoformat(key_dict['expires_at'].replace('Z', '+00:00'))
+                    
+                    api_key_info = ApiKeyInfo(**key_dict)
+                    api_keys[api_key_info.key] = api_key_info
+                    
+                except Exception as e:
+                    self.logger.error(f"Failed to parse API key: {e}")
+                    continue
+            
+            self.logger.info(f"Loaded {len(api_keys)} API keys from configuration for region '{self.collector_region}'")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load configuration: {e}")
+            
+            # Fallback to development key
+            if self.collector_region == 'etex':
+                default_key = f"{self.collector_region}.development123testing456"
+                api_key_info = ApiKeyInfo(
+                    key=default_key,
+                    name="Fallback Development Key",
+                    description="Fallback development API key - REMOVE IN PRODUCTION",
+                    created_at=datetime.utcnow()
+                )
+                api_keys[default_key] = api_key_info
+                self.logger.warning(f"Using fallback development API key: {default_key}")
         
         return api_keys
     

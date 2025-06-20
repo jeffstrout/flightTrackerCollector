@@ -44,6 +44,22 @@ class CollectorConfig(BaseModel):
     password: Optional[str] = None
 
 
+class ApiKeyConfig(BaseModel):
+    key: str
+    name: str
+    description: str
+    created_at: str
+    expires_at: Optional[str] = None
+    permissions: List[str] = ["aircraft:write"]
+    rate_limits: Dict[str, int] = Field(default_factory=dict)
+    status: str = "active"
+
+
+class PiStationsConfig(BaseModel):
+    enabled: bool = True
+    api_keys: List[ApiKeyConfig] = Field(default_factory=list)
+
+
 class RegionConfig(BaseModel):
     enabled: bool = True
     name: str
@@ -51,6 +67,7 @@ class RegionConfig(BaseModel):
     center: Dict[str, float]  # lat, lon
     radius_miles: float
     collectors: List[CollectorConfig]
+    pi_stations: Optional[PiStationsConfig] = None
 
 
 class AirportConfig(BaseModel):

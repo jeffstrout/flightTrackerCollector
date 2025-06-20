@@ -40,12 +40,43 @@ regions:
         anonymous: ${OPENSKY_ANONYMOUS:-true}
         username: ${OPENSKY_USERNAME:-}
         password: ${OPENSKY_PASSWORD:-}
-      
-      # Local ADS-B receiver
-      - type: "dump1090"
-        enabled: true
-        url: "http://192.168.0.13/tar1090/data/aircraft.json"
-        name: "Home ADS-B Receiver"
+    
+    # Pi Station Forwarders - Remote ADS-B receivers
+    pi_stations:
+      enabled: true
+      api_keys:
+        - key: "etex.abc123def456ghi789jkl012"
+          name: "East Texas Pi Network - Primary"
+          description: "Primary API key for East Texas Pi stations"
+          created_at: "2025-06-20T10:00:00Z"
+          expires_at: "2026-06-20T10:00:00Z"
+          permissions: ["aircraft:write"]
+          rate_limits:
+            requests_per_minute: 1000
+            burst_allowance: 100
+          status: "active"
+        
+        - key: "etex.xyz789mno456pqr123stu890"
+          name: "East Texas Pi Network - Secondary"
+          description: "Secondary API key for additional Pi stations"
+          created_at: "2025-06-20T11:00:00Z"
+          expires_at: "2026-06-20T11:00:00Z"
+          permissions: ["aircraft:write"]
+          rate_limits:
+            requests_per_minute: 500
+            burst_allowance: 50
+          status: "active"
+        
+        - key: "etex.development123testing456"
+          name: "Development Key"
+          description: "Development API key - REMOVE IN PRODUCTION"
+          created_at: "2025-06-20T12:00:00Z"
+          expires_at: "2025-12-31T23:59:59Z"
+          permissions: ["aircraft:write"]
+          rate_limits:
+            requests_per_minute: 100
+            burst_allowance: 20
+          status: "active"
 
 # Airport database for destination estimation
 airports:
