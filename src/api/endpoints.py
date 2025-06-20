@@ -285,6 +285,7 @@ async def get_logs(lines: int = 100) -> str:
     
     # Get actual log file from logging handlers
     import logging
+    import os
     log_file = None
     
     # First, try to get the file from the current logging configuration
@@ -309,8 +310,43 @@ async def get_logs(lines: int = 100) -> str:
                 log_file = path
                 break
     
+    # If still no log file found, check if we're in a production environment
+    # and provide CloudWatch logs information
     if log_file is None:
-        # List available files for debugging
+        # Check if we're running in AWS/Docker production
+        is_production = (
+            os.path.exists('/app') or 
+            os.getenv('AWS_EXECUTION_ENV') or 
+            os.getenv('ECS_CONTAINER_METADATA_URI')
+        )
+        
+        if is_production:
+            return f"""PRODUCTION ENVIRONMENT DETECTED - File logging disabled
+
+In production, logs are sent to stdout/stderr and captured by CloudWatch.
+
+To view production logs:
+
+1. AWS CloudWatch Logs:
+   - Log Group: /ecs/flight-tracker
+   - Use AWS Console or CLI to view logs
+   
+2. AWS CLI example:
+   aws logs get-log-events --log-group-name /ecs/flight-tracker --log-stream-name [stream-name]
+
+3. Alternative: Check system logs in container:
+   - Recent application output may be in memory
+   - Use 'docker logs [container-id]' if running locally
+
+Current environment:
+- Working Directory: {os.getcwd()}
+- AWS_EXECUTION_ENV: {os.getenv('AWS_EXECUTION_ENV', 'not set')}
+- ECS_CONTAINER_METADATA_URI: {os.getenv('ECS_CONTAINER_METADATA_URI', 'not set')}
+
+For debugging, use: /api/v1/debug/logs-info
+"""
+        
+        # List available files for debugging in non-production
         debug_info = []
         for path in [Path("logs"), Path("/app/logs"), Path("./logs")]:
             if path.exists():
