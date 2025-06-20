@@ -1,5 +1,6 @@
 import csv
 import io
+from pathlib import Path
 from typing import Dict, List
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import PlainTextResponse
@@ -216,3 +217,62 @@ async def get_memory_debug() -> Dict:
         "memory_store_keys": list(redis_service.memory_store.keys()),
         "memory_store_data": redis_service.memory_store
     }
+
+
+@router.get("/logs", response_class=PlainTextResponse)
+async def get_logs(lines: int = 100) -> str:
+    """Get the last N lines from the flight collector log file
+    
+    Args:
+        lines: Number of lines to return (default: 100, max: 1000)
+    
+    Returns:
+        Last N lines of the log file as plain text
+    """
+    # Limit the number of lines to prevent abuse
+    lines = min(max(lines, 1), 1000)
+    
+    # Try multiple possible log file locations (local dev vs Docker/production)
+    possible_paths = [
+        Path("logs") / "flight_collector.log",  # Local development
+        Path("/app/logs") / "flight_collector.log",  # Docker production
+        Path("./logs") / "flight_collector.log",  # Relative path
+    ]
+    
+    log_file = None
+    for path in possible_paths:
+        if path.exists():
+            log_file = path
+            break
+    
+    if log_file is None:
+        # List available files for debugging
+        debug_info = []
+        for path in possible_paths:
+            if path.parent.exists():
+                try:
+                    files = list(path.parent.glob("*.log*"))
+                    debug_info.append(f"{path.parent}: {[f.name for f in files]}")
+                except:
+                    debug_info.append(f"{path.parent}: access denied")
+            else:
+                debug_info.append(f"{path.parent}: directory not found")
+        
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Log file not found. Checked: {debug_info}"
+        )
+    
+    try:
+        # Read the last N lines efficiently using a deque
+        from collections import deque
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            # Use deque with maxlen to efficiently keep only the last N lines
+            last_lines = deque(f, maxlen=lines)
+        
+        # Join the lines and return as plain text
+        return ''.join(last_lines)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading log file {log_file}: {str(e)}")
