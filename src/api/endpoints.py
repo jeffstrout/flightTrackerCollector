@@ -219,6 +219,57 @@ async def get_memory_debug() -> Dict:
     }
 
 
+@router.get("/debug/logs-info")
+async def get_logs_debug_info() -> Dict:
+    """Debug endpoint to check logging configuration and file locations"""
+    import logging
+    import os
+    
+    debug_info = {
+        "current_working_directory": os.getcwd(),
+        "environment_variables": {
+            "LOG_LEVEL": os.getenv("LOG_LEVEL", "not set")
+        },
+        "logging_handlers": [],
+        "file_searches": {}
+    }
+    
+    # Check current logging handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        handler_info = {
+            "type": type(handler).__name__,
+            "level": logging.getLevelName(handler.level)
+        }
+        if hasattr(handler, 'baseFilename'):
+            handler_info["filename"] = handler.baseFilename
+            handler_info["file_exists"] = Path(handler.baseFilename).exists()
+        debug_info["logging_handlers"].append(handler_info)
+    
+    # Search for log files in various locations
+    search_locations = [
+        "/app/logs",
+        "/app", 
+        "logs",
+        ".",
+        "/tmp",
+        "/var/log"
+    ]
+    
+    for location in search_locations:
+        path = Path(location)
+        if path.exists() and path.is_dir():
+            try:
+                files = list(path.glob("**/*.log*"))
+                debug_info["file_searches"][str(location)] = [str(f) for f in files]
+            except:
+                debug_info["file_searches"][str(location)] = "access denied"
+        else:
+            debug_info["file_searches"][str(location)] = "not found"
+    
+    return debug_info
+
+
 @router.get("/logs", response_class=PlainTextResponse)
 async def get_logs(lines: int = 100) -> str:
     """Get the last N lines from the flight collector log file
@@ -232,35 +283,48 @@ async def get_logs(lines: int = 100) -> str:
     # Limit the number of lines to prevent abuse
     lines = min(max(lines, 1), 1000)
     
-    # Try multiple possible log file locations (local dev vs Docker/production)
-    possible_paths = [
-        Path("logs") / "flight_collector.log",  # Local development
-        Path("/app/logs") / "flight_collector.log",  # Docker production
-        Path("./logs") / "flight_collector.log",  # Relative path
-    ]
-    
+    # Get actual log file from logging handlers
+    import logging
     log_file = None
-    for path in possible_paths:
-        if path.exists():
-            log_file = path
-            break
+    
+    # First, try to get the file from the current logging configuration
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if hasattr(handler, 'baseFilename'):
+            potential_file = Path(handler.baseFilename)
+            if potential_file.exists():
+                log_file = potential_file
+                break
+    
+    # If not found in handlers, try traditional locations
+    if log_file is None:
+        possible_paths = [
+            Path("logs") / "flight_collector.log",  # Local development
+            Path("/app/logs") / "flight_collector.log",  # Docker production
+            Path("./logs") / "flight_collector.log",  # Relative path
+        ]
+        
+        for path in possible_paths:
+            if path.exists():
+                log_file = path
+                break
     
     if log_file is None:
         # List available files for debugging
         debug_info = []
-        for path in possible_paths:
-            if path.parent.exists():
+        for path in [Path("logs"), Path("/app/logs"), Path("./logs")]:
+            if path.exists():
                 try:
-                    files = list(path.parent.glob("*.log*"))
-                    debug_info.append(f"{path.parent}: {[f.name for f in files]}")
+                    files = list(path.glob("*.log*"))
+                    debug_info.append(f"{path}: {[f.name for f in files]}")
                 except:
-                    debug_info.append(f"{path.parent}: access denied")
+                    debug_info.append(f"{path}: access denied")
             else:
-                debug_info.append(f"{path.parent}: directory not found")
+                debug_info.append(f"{path}: directory not found")
         
         raise HTTPException(
             status_code=404, 
-            detail=f"Log file not found. Checked: {debug_info}"
+            detail=f"Log file not found. Use /api/v1/debug/logs-info for detailed debugging. Quick check: {debug_info}"
         )
     
     try:
