@@ -270,6 +270,108 @@ async def get_logs_debug_info() -> Dict:
     return debug_info
 
 
+async def get_cloudwatch_logs(lines: int = 100) -> str:
+    """Fetch logs from AWS CloudWatch"""
+    try:
+        import boto3
+        from datetime import datetime, timedelta
+        
+        # Initialize CloudWatch Logs client
+        logs_client = boto3.client('logs')
+        log_group_name = '/ecs/flight-tracker'
+        
+        # Get the most recent log streams
+        streams_response = logs_client.describe_log_streams(
+            logGroupName=log_group_name,
+            orderBy='LastEventTime',
+            descending=True,
+            limit=5  # Get latest 5 streams
+        )
+        
+        if not streams_response['logStreams']:
+            return "No log streams found in CloudWatch log group /ecs/flight-tracker"
+        
+        # Collect log events from recent streams
+        all_events = []
+        
+        for stream in streams_response['logStreams']:
+            stream_name = stream['logStreamName']
+            
+            try:
+                # Get log events from this stream (last hour to avoid too much data)
+                end_time = datetime.utcnow()
+                start_time = end_time - timedelta(hours=1)
+                
+                events_response = logs_client.get_log_events(
+                    logGroupName=log_group_name,
+                    logStreamName=stream_name,
+                    startTime=int(start_time.timestamp() * 1000),
+                    endTime=int(end_time.timestamp() * 1000),
+                    limit=lines,  # Limit per stream
+                    startFromHead=False  # Get most recent
+                )
+                
+                for event in events_response['events']:
+                    all_events.append({
+                        'timestamp': event['timestamp'],
+                        'message': event['message'],
+                        'stream': stream_name
+                    })
+                    
+            except Exception as stream_error:
+                # Skip streams we can't access, but don't fail entirely
+                continue
+        
+        # Sort by timestamp and get the most recent entries
+        all_events.sort(key=lambda x: x['timestamp'], reverse=True)
+        recent_events = all_events[:lines]
+        
+        if not recent_events:
+            return "No recent log events found in CloudWatch"
+        
+        # Format the log output
+        log_output = []
+        log_output.append(f"=== CloudWatch Logs (Last {len(recent_events)} entries) ===\n")
+        
+        for event in reversed(recent_events):  # Show chronologically
+            # Convert timestamp to readable format
+            dt = datetime.fromtimestamp(event['timestamp'] / 1000)
+            formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Clean up the message (remove extra newlines/formatting)
+            message = event['message'].rstrip()
+            
+            log_output.append(f"[{formatted_time}] {message}")
+        
+        return '\n'.join(log_output)
+        
+    except Exception as e:
+        # If CloudWatch access fails, provide helpful error
+        error_msg = str(e)
+        if 'AccessDenied' in error_msg:
+            return f"""CloudWatch Access Error: {error_msg}
+
+The application needs CloudWatch Logs permissions. 
+Please ensure the ECS task role has the following policy:
+
+{{
+    "Version": "2012-10-17",
+    "Statement": [
+        {{
+            "Effect": "Allow",
+            "Action": [
+                "logs:DescribeLogStreams",
+                "logs:GetLogEvents"
+            ],
+            "Resource": "arn:aws:logs:*:*:log-group:/ecs/flight-tracker:*"
+        }}
+    ]
+}}
+"""
+        else:
+            return f"Error accessing CloudWatch logs: {error_msg}"
+
+
 @router.get("/logs", response_class=PlainTextResponse)
 async def get_logs(lines: int = 100) -> str:
     """Get the last N lines from the flight collector log file
@@ -311,7 +413,6 @@ async def get_logs(lines: int = 100) -> str:
                 break
     
     # If still no log file found, check if we're in a production environment
-    # and provide CloudWatch logs information
     if log_file is None:
         # Check if we're running in AWS/Docker production
         is_production = (
@@ -321,30 +422,8 @@ async def get_logs(lines: int = 100) -> str:
         )
         
         if is_production:
-            return f"""PRODUCTION ENVIRONMENT DETECTED - File logging disabled
-
-In production, logs are sent to stdout/stderr and captured by CloudWatch.
-
-To view production logs:
-
-1. AWS CloudWatch Logs:
-   - Log Group: /ecs/flight-tracker
-   - Use AWS Console or CLI to view logs
-   
-2. AWS CLI example:
-   aws logs get-log-events --log-group-name /ecs/flight-tracker --log-stream-name [stream-name]
-
-3. Alternative: Check system logs in container:
-   - Recent application output may be in memory
-   - Use 'docker logs [container-id]' if running locally
-
-Current environment:
-- Working Directory: {os.getcwd()}
-- AWS_EXECUTION_ENV: {os.getenv('AWS_EXECUTION_ENV', 'not set')}
-- ECS_CONTAINER_METADATA_URI: {os.getenv('ECS_CONTAINER_METADATA_URI', 'not set')}
-
-For debugging, use: /api/v1/debug/logs-info
-"""
+            # Try to fetch from CloudWatch
+            return await get_cloudwatch_logs(lines)
         
         # List available files for debugging in non-production
         debug_info = []
@@ -364,7 +443,7 @@ For debugging, use: /api/v1/debug/logs-info
         )
     
     try:
-        # Read the last N lines efficiently using a deque
+        # Read the last N lines efficiently using a deque (local file logging)
         from collections import deque
         
         with open(log_file, 'r', encoding='utf-8') as f:
