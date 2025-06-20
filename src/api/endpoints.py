@@ -561,8 +561,18 @@ async def receive_bulk_aircraft_data(
         region = api_key_service.get_collector_region()
         existing_data = redis_service.get_region_data(region, "flights") or {"aircraft": []}
         
-        # Merge Pi station data with existing data
-        all_aircraft = existing_data.get("aircraft", []) + enriched_aircraft
+        # Merge Pi station data with existing data - replace old data from same station
+        existing_aircraft = existing_data.get("aircraft", [])
+        current_station_source = f"pi_station_{request.station_id}"
+        
+        # Filter out old data from this same Pi station
+        filtered_aircraft = [
+            aircraft for aircraft in existing_aircraft 
+            if aircraft.get("data_source") != current_station_source
+        ]
+        
+        # Add new data from this Pi station
+        all_aircraft = filtered_aircraft + enriched_aircraft
         
         # Update region data with merged aircraft list
         merged_data = {
