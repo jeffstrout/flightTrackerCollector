@@ -65,7 +65,7 @@ class ApiKeyService:
             self.logger.info(f"Loaded {len(api_keys)} API keys from configuration for region '{self.collector_region}'")
             
         except Exception as e:
-            self.logger.error(f"Failed to load configuration: {e}")
+            self.logger.error(f"Failed to load configuration: {e}", exc_info=True)
             
             # Fallback to development key
             if self.collector_region == 'etex':
@@ -78,6 +78,22 @@ class ApiKeyService:
                 )
                 api_keys[default_key] = api_key_info
                 self.logger.warning(f"Using fallback development API key: {default_key}")
+                
+                # Also add the production keys as fallbacks
+                production_keys = [
+                    "etex.abc123def456ghi789jkl012",
+                    "etex.xyz789mno456pqr123stu890"
+                ]
+                for prod_key in production_keys:
+                    prod_key_info = ApiKeyInfo(
+                        key=prod_key,
+                        name=f"Fallback Production Key {prod_key[:8]}...",
+                        description="Fallback production API key",
+                        created_at=datetime.utcnow()
+                    )
+                    api_keys[prod_key] = prod_key_info
+                
+                self.logger.warning(f"Added {len(production_keys)} fallback production keys")
         
         return api_keys
     
