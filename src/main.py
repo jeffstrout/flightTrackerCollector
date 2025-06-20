@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 
 from .config.loader import load_config
 from .services.collector_service import CollectorService
@@ -83,10 +83,24 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
+    allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# Additional CORS handling for preflight requests
+@app.options("/{full_path:path}")
+async def options_handler(request):
+    """Handle all OPTIONS requests for CORS preflight"""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")
@@ -108,7 +122,7 @@ async def get_config():
     """Serve frontend configuration with version info"""
     config_js = f"""
 window.FLIGHT_TRACKER_CONFIG = {{
-    API_BASE_URL: '/api/v1',
+    API_BASE_URL: 'https://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1',
     ENV: 'production',
     VERSION: {json.dumps(VERSION_INFO)},
     CACHE_BUST: '{int(time.time())}'
