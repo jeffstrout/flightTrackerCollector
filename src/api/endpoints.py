@@ -11,6 +11,7 @@ from datetime import datetime
 from ..services.redis_service import RedisService
 from ..services.collector_service import CollectorService
 from ..services.api_key_service import ApiKeyService
+from ..services.aws_cost_service import AWSCostService
 from ..models.aircraft import AircraftResponse
 from ..models.api_key import BulkAircraftRequest, BulkAircraftResponse
 from ..config.loader import load_config
@@ -19,6 +20,13 @@ from ..version import VERSION_INFO
 router = APIRouter()
 redis_service = RedisService()
 api_key_service = ApiKeyService()
+
+# Initialize AWS Cost Service (optional, requires AWS permissions)
+try:
+    aws_cost_service = AWSCostService()
+except Exception as e:
+    # Cost service initialization failed - endpoints will handle this gracefully
+    aws_cost_service = None
 
 
 class CollectorInfo(BaseModel):
@@ -628,3 +636,147 @@ async def get_collector_region() -> Dict:
         "api_key_format": f"{api_key_service.get_collector_region()}.{{random_string}}",
         "bulk_endpoint": "/api/v1/aircraft/bulk"
     }
+
+
+# AWS Cost Monitoring Endpoints
+
+@router.get("/costs/current")
+async def get_current_costs() -> Dict:
+    """Get current month AWS costs with service breakdown
+    
+    Returns:
+        Dict containing:
+        - total: Total cost for current month
+        - currency: Currency (USD)
+        - period: Date range string
+        - breakdown: Cost breakdown by AWS service
+        - last_updated: Timestamp of data retrieval
+    """
+    if aws_cost_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "AWS Cost Service unavailable",
+                "message": "AWS Cost Explorer access not configured or insufficient permissions",
+                "required_permissions": [
+                    "ce:GetCostAndUsage",
+                    "ce:GetCostForecast"
+                ]
+            }
+        )
+    
+    try:
+        return aws_cost_service.get_current_month_costs()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving current costs: {str(e)}"
+        )
+
+
+@router.get("/costs/daily")
+async def get_daily_costs(days: int = 30) -> Dict:
+    """Get daily cost breakdown for the last N days
+    
+    Args:
+        days: Number of days to retrieve (default: 30, max: 365)
+    
+    Returns:
+        Dict containing daily cost data and trends
+    """
+    if aws_cost_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS Cost Service unavailable - check AWS permissions"
+        )
+    
+    # Limit days to reasonable range
+    days = min(max(days, 1), 365)
+    
+    try:
+        return aws_cost_service.get_daily_costs(days)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving daily costs: {str(e)}"
+        )
+
+
+@router.get("/costs/budget")
+async def get_budget_status() -> Dict:
+    """Get AWS budget status and utilization
+    
+    Returns:
+        Dict containing:
+        - overall_status: healthy/warning/critical
+        - budgets: List of budget details with utilization
+        - budget_count: Number of configured budgets
+    """
+    if aws_cost_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS Cost Service unavailable - check AWS permissions"
+        )
+    
+    try:
+        return aws_cost_service.get_budget_status()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving budget status: {str(e)}"
+        )
+
+
+@router.get("/costs/forecast")
+async def get_cost_forecast(days: int = 30) -> Dict:
+    """Get AWS cost forecast for the next N days
+    
+    Args:
+        days: Number of days to forecast (default: 30, max: 365)
+    
+    Returns:
+        Dict containing cost forecast and projections
+    """
+    if aws_cost_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS Cost Service unavailable - check AWS permissions"
+        )
+    
+    # Limit days to reasonable range
+    days = min(max(days, 1), 365)
+    
+    try:
+        return aws_cost_service.get_cost_forecast(days)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving cost forecast: {str(e)}"
+        )
+
+
+@router.get("/costs/summary")
+async def get_comprehensive_cost_summary() -> Dict:
+    """Get comprehensive AWS cost summary including all metrics
+    
+    Returns:
+        Complete cost overview with:
+        - Current month costs
+        - Budget status
+        - Cost forecast
+        - Recent daily trends
+        - Overall financial health status
+    """
+    if aws_cost_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS Cost Service unavailable - check AWS permissions"
+        )
+    
+    try:
+        return aws_cost_service.get_comprehensive_cost_summary()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving cost summary: {str(e)}"
+        )

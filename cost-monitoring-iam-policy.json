@@ -1,0 +1,41 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CostExplorerReadAccess",
+            "Effect": "Allow",
+            "Action": [
+                "ce:GetCostAndUsage",
+                "ce:GetCostForecast",
+                "ce:GetRightsizingRecommendation",
+                "ce:GetUsageForecast",
+                "ce:GetReservationCoverage",
+                "ce:GetReservationPurchaseRecommendation",
+                "ce:GetReservationUtilization",
+                "ce:GetSavingsPlansUtilization",
+                "ce:GetSavingsPlansCoverage",
+                "ce:ListCostCategoryDefinitions",
+                "ce:DescribeCostCategoryDefinition"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "BudgetsReadAccess",
+            "Effect": "Allow",
+            "Action": [
+                "budgets:DescribeBudget",
+                "budgets:DescribeBudgets",
+                "budgets:DescribeBudgetPerformanceHistory"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "STSGetCallerIdentity",
+            "Effect": "Allow",
+            "Action": [
+                "sts:GetCallerIdentity"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
