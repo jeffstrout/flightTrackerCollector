@@ -147,12 +147,12 @@ if __name__ == "__main__":
     # Setup logging
     setup_logging()
     
-    # For development only
+    # For development only - use run.py for production
     import uvicorn
     uvicorn.run(
         "src.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,  # Disabled for production compatibility
         log_level="info"
     )

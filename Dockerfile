@@ -43,8 +43,11 @@ ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_CLEAN=true
 
-# Copy application code
-COPY --chown=appuser:appuser . .
+# Copy application code (excluding aircraft database - downloaded at runtime)
+COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser config/*.yaml /app/config/
+COPY --chown=appuser:appuser requirements.txt /app/
+COPY --chown=appuser:appuser run.py /app/
 
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
@@ -54,14 +57,8 @@ RUN chmod +x /app/scripts/download_aircraft_db.sh /app/scripts/download_config.s
 # Create logs directory with proper permissions
 RUN mkdir -p logs && chown -R appuser:appuser logs
 
-# Verify aircraft database file exists and is readable
-RUN if [ -f config/aircraftDatabase.csv ]; then \
-        echo "Aircraft database found: $(wc -l < config/aircraftDatabase.csv) lines"; \
-        ls -la config/aircraftDatabase.csv; \
-    else \
-        echo "WARNING: Aircraft database not found at config/aircraftDatabase.csv"; \
-        ls -la config/; \
-    fi
+# Create config directory for runtime downloads
+RUN mkdir -p /app/config && chown -R appuser:appuser /app/config
 
 # Make sure scripts are executable
 RUN chmod +x /home/appuser/.local/bin/*
@@ -85,5 +82,34 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/status || exit 1
 
-# Default command - can be overridden in docker-compose
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create startup script that downloads dependencies then starts the app
+RUN echo '#!/bin/bash\n\
+echo "🚀 Starting Flight Tracker Collector..."\n\
+\n\
+# Download aircraft database (continue even if it fails)\n\
+if [ -f "/app/scripts/download_aircraft_db.sh" ]; then\n\
+    echo "📥 Running aircraft database download script..."\n\
+    /app/scripts/download_aircraft_db.sh || echo "⚠️  Aircraft database download failed, continuing without enrichment"\n\
+fi\n\
+\n\
+# Download config if needed (continue even if it fails)\n\
+if [ -f "/app/scripts/download_config.sh" ]; then\n\
+    echo "📥 Running config download script..."\n\
+    /app/scripts/download_config.sh || echo "⚠️  Config download failed, using default config"\n\
+fi\n\
+\n\
+# Verify critical files exist\n\
+echo "🔍 Verifying application files..."\n\
+if [ ! -f "/app/src/main.py" ]; then\n\
+    echo "❌ Critical error: main.py not found"\n\
+    exit 1\n\
+fi\n\
+\n\
+# Start the application\n\
+echo "🌐 Starting FastAPI server..."\n\
+cd /app\n\
+exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Default command - run startup script
+CMD ["/app/start.sh"]

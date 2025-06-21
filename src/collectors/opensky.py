@@ -32,6 +32,15 @@ class OpenSkyCollector(BaseCollector):
             logger.info(f"OpenSky collector configured with authentication for {self.username}")
         else:
             logger.info("OpenSky collector configured for anonymous access")
+        
+        # Log configuration details
+        logger.info(f"OpenSky collector initialized:")
+        logger.info(f"  - URL: {self.url}")
+        logger.info(f"  - Region: {region_config.get('name', 'unknown')} "
+                   f"(center: {self.center_lat:.3f}, {self.center_lon:.3f})")
+        logger.info(f"  - Radius: {region_config.get('radius_miles', 'unknown')} miles")
+        logger.info(f"  - Enabled: {self.enabled}")
+        logger.info(f"  - Anonymous: {self.anonymous}")
     
     async def fetch_data(self) -> Optional[List[Aircraft]]:
         """Fetch data from OpenSky Network API"""
@@ -77,13 +86,15 @@ class OpenSkyCollector(BaseCollector):
             
             logger.debug(f"OpenSky request: {params}")
             
-            # Make API request
+            # Make API request with detailed error handling
             async with httpx.AsyncClient(timeout=30.0) as client:
+                logger.debug(f"Making OpenSky request to {self.url}")
                 response = await client.get(
                     self.url,
                     params=params,
                     auth=self.auth
                 )
+                logger.debug(f"OpenSky response status: {response.status_code}")
                 
                 response.raise_for_status()
                 
@@ -146,9 +157,25 @@ class OpenSkyCollector(BaseCollector):
                 logger.error(f"OpenSky HTTP error {e.response.status_code}: {e}")
             return None
             
+        except httpx.TimeoutException as e:
+            self.update_stats(False)
+            logger.error(f"OpenSky request timeout: {e}")
+            return None
+            
+        except httpx.ConnectError as e:
+            self.update_stats(False)
+            logger.error(f"OpenSky connection error: {e}")
+            return None
+            
+        except httpx.RequestError as e:
+            self.update_stats(False)
+            logger.error(f"OpenSky request error: {e}")
+            return None
+            
         except Exception as e:
             self.update_stats(False)
-            logger.error(f"OpenSky fetch failed: {e}")
+            logger.error(f"OpenSky fetch failed: {type(e).__name__}: {e}")
+            logger.debug(f"OpenSky error details", exc_info=True)
             return None
     
     def _convert_opensky_data(self, data: dict) -> List[Aircraft]:
