@@ -90,7 +90,7 @@ app.add_middleware(
 
 # Additional CORS handling for preflight requests
 @app.options("/{full_path:path}")
-async def options_handler(request):
+async def options_handler(full_path: str):
     """Handle all OPTIONS requests for CORS preflight"""
     return Response(
         status_code=200,
@@ -104,12 +104,6 @@ async def options_handler(request):
 
 # Include API routes
 app.include_router(router, prefix="/api/v1")
-
-# Manual CORS preflight handler for additional coverage
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    """Handle CORS preflight requests"""
-    return {"status": "ok"}
 
 # Setup static file serving for frontend
 static_dir = Path(__file__).parent.parent / "static"
