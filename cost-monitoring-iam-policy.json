@@ -24,8 +24,9 @@
             "Effect": "Allow",
             "Action": [
                 "budgets:DescribeBudget",
-                "budgets:DescribeBudgets",
-                "budgets:DescribeBudgetPerformanceHistory"
+                "budgets:DescribeBudgets", 
+                "budgets:DescribeBudgetPerformanceHistory",
+                "budgets:ViewBudget"
             ],
             "Resource": "*"
         },
