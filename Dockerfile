@@ -49,6 +49,9 @@ COPY --chown=appuser:appuser config/*.yaml /app/config/
 COPY --chown=appuser:appuser requirements.txt /app/
 COPY --chown=appuser:appuser run.py /app/
 
+# Debug: List files after copy
+RUN echo "📂 Debug - Files in /app after COPY:" && ls -la /app/ && echo "📂 Debug - Files in /app/src:" && ls -la /app/src/
+
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
 COPY --chown=appuser:appuser scripts/download_config.sh /app/scripts/
@@ -102,6 +105,10 @@ fi\n\
 echo "🔍 Verifying application files..."\n\
 if [ ! -f "/app/src/main.py" ]; then\n\
     echo "❌ Critical error: main.py not found"\n\
+    echo "📂 Contents of /app:"\n\
+    ls -la /app/\n\
+    echo "📂 Contents of /app/src:"\n\
+    ls -la /app/src/ || echo "src directory not found"\n\
     exit 1\n\
 fi\n\
 \n\
