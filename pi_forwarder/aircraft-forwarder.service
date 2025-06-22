@@ -1,0 +1,21 @@
+[Unit]
+Description=Aircraft Data Forwarder for dump1090
+After=network.target dump1090-fa.service
+Wants=dump1090-fa.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/aircraft-forwarder
+ExecStart=/usr/bin/python3 /home/pi/aircraft-forwarder/aircraft_forwarder.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables (optional)
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

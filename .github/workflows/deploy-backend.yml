@@ -114,7 +114,7 @@ jobs:
                 }
               ],
               "healthCheck": {
-                "command": ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/status || exit 1"],
+                "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
                 "interval": 30,
                 "timeout": 5,
                 "retries": 3,
@@ -133,7 +133,7 @@ jobs:
               "name": "collector",
               "image": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
               "essential": true,
-              "command": ["python", "-m", "src.main"],
+              "command": ["/app/start.sh"],
               "environment": [
                 {
                   "name": "REDIS_HOST",
