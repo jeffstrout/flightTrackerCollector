@@ -189,22 +189,29 @@ class CloudWatchAlarmsService:
             end_time = datetime.utcnow()
             start_time = end_time - timedelta(hours=24)
             
+            # First get all alarm names, then filter for flight-tracker related ones
             response = self.client.describe_alarm_history(
-                AlarmNamePrefix='flight-tracker',
                 StartDate=start_time,
                 EndDate=end_time,
-                MaxRecords=limit
+                MaxRecords=limit * 2  # Get more to filter
             )
             
             alarms = []
             for item in response.get('AlarmHistoryItems', []):
-                alarm = {
-                    "timestamp": item['Timestamp'].isoformat(),
-                    "alarm_name": item['AlarmName'],
-                    "state": item['HistorySummary'],
-                    "reason": item.get('HistoryData', {})
-                }
-                alarms.append(alarm)
+                # Filter for flight-tracker related alarms
+                alarm_name = item['AlarmName']
+                if 'flight-tracker' in alarm_name.lower() or 'flight_tracker' in alarm_name.lower():
+                    alarm = {
+                        "timestamp": item['Timestamp'].isoformat(),
+                        "alarm_name": alarm_name,
+                        "state": item['HistorySummary'],
+                        "reason": item.get('HistoryData', '')
+                    }
+                    alarms.append(alarm)
+                    
+                    # Limit to requested number
+                    if len(alarms) >= limit:
+                        break
             
             return alarms
             
