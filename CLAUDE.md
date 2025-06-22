@@ -3,8 +3,8 @@
 🌐 **Live Production System**: ✅ **Operational**
 
 **Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
-**API Endpoint**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1
-**API Documentation**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/docs
+**API Endpoint**: https://api.choppertracker.com/api/v1
+**API Documentation**: https://api.choppertracker.com/docs
 
 ## Purpose
 A comprehensive Python application deployed on AWS that polls multiple flight data sources, merges the data in Redis cache, and provides both RESTful APIs and a React web interface for real-time aircraft tracking.
@@ -32,22 +32,25 @@ A comprehensive Python application deployed on AWS that polls multiple flight da
   - Native WebSocket support for future real-time updates
 
 ### Data Flow
-1. **Optimized Parallel Collection**: Data collectors run concurrently using asyncio.gather()
-   - dump1090: Every 15 seconds (no rate limits) - local ADS-B receiver data
-   - OpenSky: Smart rate limiting with 5-minute backoff on 429 errors
-2. **Batch Aircraft Database Enrichment**: Single database operation for all aircraft
-3. Data blending strategy:
-   - dump1090 has priority (high-quality local data)
-   - OpenSky fills gaps for aircraft beyond local receiver range
-   - Deduplication based on ICAO hex codes
-   - Aircraft sorted by distance from region center
+1. **Multi-Source Data Collection**: Data collectors run concurrently using asyncio.gather()
+   - **Pi Stations**: Real-time ADS-B data from distributed Raspberry Pi receivers (every 15 seconds)
+   - **dump1090**: Local ADS-B receiver data (every 15 seconds)
+   - **OpenSky**: Global network data with smart rate limiting (5-minute backoff on 429 errors)
+2. **Enhanced Data Blending Strategy**: Intelligent priority-based merging
+   - **Pi Stations** have highest priority (distributed high-quality local data)
+   - **dump1090** has medium priority (local collector data)
+   - **OpenSky** has lowest priority (fills gaps for aircraft beyond local range)
+   - Deduplication based on ICAO hex codes with source priority override
+3. **Batch Aircraft Database Enrichment**: Single database operation enriches all aircraft with:
+   - Registration numbers, aircraft models, operators, manufacturers
+   - ICAO aircraft classifications for helicopter identification
 4. **ICAO-Only Helicopter Identification**: Uses ICAO aircraft class starting with 'H' only
-5. Flight destinations estimated using airport database and heading
-6. **Optimized Redis Storage**: Pipeline operations with pre-serialized data
+5. **Optimized Redis Storage**: Pipeline operations with pre-serialized data
    - `{region}:flights`: All flights for a region (5-minute TTL)
    - `{region}:choppers`: Helicopters only
+   - `pi_data:{region}:{station_id}`: Pi station raw data for blending
    - `aircraft_live:{hex}`: Individual aircraft for quick lookups
-7. Web interface queries Redis and presents data via API endpoints
+6. Web interface queries Redis and presents blended, enriched data via API endpoints
 
 ### Data Format Mapping
 
@@ -220,18 +223,19 @@ The application uses a centralized Redis instance with database separation:
 - `GET /health` - Health check endpoint
 - `GET /api/v1/status` - Enhanced system status with:
   - System health and version information
-  - Connected data sources by region
+  - Connected data sources by region (Pi stations, OpenSky, dump1090)
   - Security monitoring (events, CloudWatch alarms)
   - Rate limiting configuration
 - `GET /api/v1/regions` - Returns all configured regions with their collectors
-- `GET /api/v1/{region}/flights` - Returns all flights for a region in JSON format
+- `GET /api/v1/{region}/flights` - Returns all flights for a region in JSON format (blended data)
 - `GET /api/v1/{region}/flights/tabular` - Returns flights in tabular/CSV format
 - `GET /api/v1/{region}/choppers` - Returns helicopters only for a region
 - `GET /api/v1/{region}/choppers/tabular` - Returns helicopters in tabular format
 - `GET /api/v1/{region}/stats` - Returns statistics for a specific region
+- `POST /api/v1/aircraft/bulk` - **Pi Station API**: Receive bulk aircraft data from Raspberry Pi stations
 - `GET /api/v1/debug/memory` - Debug endpoint to view memory store
-- `GET /docs` - Auto-generated API documentation (FastAPI feature)
-- `GET /redoc` - Alternative API documentation interface
+- `GET /docs` - Auto-generated API documentation (Swagger UI)
+- `GET /redoc` - Alternative API documentation interface (ReDoc)
 
 ### Security Features
 - **Rate Limiting**: 100 requests per minute per IP address
@@ -463,7 +467,7 @@ python3 -m pip install -r requirements.txt
 
 # Production Status & Recent Fixes
 
-## ✅ Current System Status (2025-06-18)
+## ✅ Current System Status (2025-06-22)
 
 **All systems operational and performing optimally:**
 
@@ -501,6 +505,25 @@ python3 -m pip install -r requirements.txt
   - Updated IAM roles with necessary S3 permissions
   - Enhanced startup scripts with dependency verification
 - **Result**: ✅ Reliable automated deployments via GitHub Actions
+
+### Pi Station Data Blending Fix (RESOLVED - 2025-06-22)
+- **Problem**: Pi station data bypassing normal blending process, missing aircraft enrichment
+- **Root Cause**: Pi station API endpoint directly merged data, skipping DataBlender class
+- **Solution**:
+  - Removed direct data merging from Pi station API endpoint  
+  - Pi station data now flows through normal collector service blending
+  - Ensures proper priority (Pi stations > dump1090 > OpenSky)
+  - Aircraft database enrichment now applies to all data sources
+- **Result**: ✅ Pi station data properly blended with OpenSky, full aircraft enrichment
+
+### API Documentation Access Fix (RESOLVED - 2025-06-22)
+- **Problem**: Swagger UI (/docs) and ReDoc (/redoc) not loading in browsers
+- **Root Cause**: Content Security Policy blocking CDN resources for Swagger UI
+- **Solution**:
+  - Updated CSP to allow cdn.jsdelivr.net for Swagger UI JavaScript/CSS
+  - Added fastapi.tiangolo.com for favicon resources
+  - Maintained security while enabling documentation access
+- **Result**: ✅ API documentation now accessible at https://api.choppertracker.com/docs
 
 ## 🎯 Performance Metrics
 

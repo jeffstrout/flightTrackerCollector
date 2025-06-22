@@ -2,8 +2,8 @@
 
 🌐 **Live Production URLs:**
 - **Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
-- **API Endpoint**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1
-- **API Documentation**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/docs
+- **API Endpoint**: https://api.choppertracker.com/api/v1
+- **API Documentation**: https://api.choppertracker.com/docs
 
 ## 🏗️ AWS Infrastructure
 

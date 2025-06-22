@@ -5,7 +5,7 @@ This guide explains how to send aircraft data from your Raspberry Pi running dum
 
 ## API Endpoint
 
-**URL**: `http://api.choppertracker.com/api/v1/aircraft/bulk`  
+**URL**: `https://api.choppertracker.com/api/v1/aircraft/bulk`  
 **Method**: `POST`  
 **Authentication**: API Key via `X-API-Key` header
 
@@ -473,19 +473,38 @@ Run with debug logging:
 python3 aircraft_forwarder.py --once 2>&1 | tee debug.log
 ```
 
-## Data Flow
+## Data Flow & Processing
 
 1. **dump1090** receives ADS-B data from aircraft
-2. **aircraft_forwarder.py** polls dump1090's JSON endpoint
+2. **aircraft_forwarder.py** polls dump1090's JSON endpoint every 15 seconds
 3. Script filters and cleans the aircraft data
-4. Data is sent to the Flight Tracker API
-5. API validates the regional API key
-6. Aircraft data is stored and merged with other sources
-7. Data appears in the web interface at http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
+4. Data is sent to the Flight Tracker API via `POST /api/v1/aircraft/bulk`
+5. API validates the regional API key and stores Pi station data in Redis
+6. **Collector Service** retrieves Pi station data during its collection cycle
+7. **Data Blending**: Pi station data gets **highest priority** in the blending process:
+   - **Pi Stations** (highest priority) - Your local ADS-B data
+   - **dump1090** (medium priority) - Other local collectors
+   - **OpenSky** (lowest priority) - Global network data
+8. **Aircraft Database Enrichment**: All aircraft get enriched with:
+   - Registration numbers (e.g., N12345)
+   - Aircraft models (e.g., Boeing 737-800)
+   - Operators (e.g., United Airlines)
+   - Manufacturers and ICAO classifications
+9. **Helicopter Identification**: Automatic detection using ICAO aircraft classes
+10. Final blended and enriched data appears in the web interface
+
+## Data Priority & Quality
+
+Your Pi station data has the **highest priority** in the system, meaning:
+- When your Pi station sees an aircraft, it overrides OpenSky data for that aircraft
+- Your local high-quality ADS-B data provides the most accurate position and speed information
+- Multiple Pi stations can contribute data for better regional coverage
+- All data sources are automatically enriched with aircraft registration and model information
 
 ## Support
 
 For issues or questions:
-- Check the API status: `GET http://api.choppertracker.com/api/v1/status`
+- Check the API status: `GET https://api.choppertracker.com/api/v1/status`
+- View API documentation: `https://api.choppertracker.com/docs`
 - View your station's region: `GET http://api.choppertracker.com/api/v1/admin/region`
 - Monitor logs: `sudo journalctl -u aircraft-forwarder.service -f`

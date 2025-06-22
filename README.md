@@ -1,30 +1,31 @@
 # Flight Tracker Collector
 
-A comprehensive Python application that collects flight data from multiple sources (OpenSky API, dump1090), merges the data in Redis cache, and provides both API endpoints and a web interface for viewing live aircraft tracking data.
+A comprehensive Python application that collects flight data from multiple sources (Pi stations, OpenSky API, dump1090), intelligently blends the data using priority-based merging, and provides both API endpoints and a web interface for real-time aircraft tracking.
 
 ## 🚁 Live Production Deployment
 
 **Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
-**API Endpoint**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1
-**API Documentation**: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/docs
+**API Endpoint**: https://api.choppertracker.com/api/v1
+**API Documentation**: https://api.choppertracker.com/docs
 
 ## 🏗️ Architecture
 
 - **Backend**: FastAPI application running on AWS ECS Fargate
 - **Frontend**: React application served from AWS S3
 - **Data Store**: AWS ElastiCache Redis cluster
-- **Data Sources**: OpenSky Network API + dump1090 ADS-B receivers
+- **Data Sources**: Pi Station Network + OpenSky API + dump1090 ADS-B receivers
 - **Infrastructure**: AWS ECS, ALB, ECR, S3, ElastiCache
 
 ## 📊 Features
 
 - **Real-time flight tracking** for configured regions
-- **Multi-source data blending** (dump1090 priority over OpenSky)
-- **Aircraft database enrichment** (registration, model, operator)
+- **Multi-source data blending** with intelligent priority (Pi stations > dump1090 > OpenSky)
+- **Aircraft database enrichment** (registration, model, operator, manufacturer)
 - **Helicopter identification** using ICAO aircraft classification
-- **RESTful API** with automatic documentation
+- **Pi Station Network** support for distributed ADS-B receivers
+- **RESTful API** with automatic Swagger documentation
 - **Web dashboard** with interactive map
-- **Rate limiting & caching** for optimal performance
+- **Rate limiting, security & caching** for optimal performance
 
 ## 🚀 Quick Start
 
@@ -76,12 +77,14 @@ Key configuration sections:
 - `GET /` - Root endpoint with API information
 - `GET /health` - Health check
 - `GET /config.js` - Frontend configuration
-- `GET /api/v1/status` - System status and health
+- `GET /api/v1/status` - System status and connected data sources
 - `GET /api/v1/regions` - Available regions
-- `GET /api/v1/{region}/flights` - All flights for region (JSON)
+- `GET /api/v1/{region}/flights` - All flights for region (blended data)
 - `GET /api/v1/{region}/flights/tabular` - Flights in CSV format
 - `GET /api/v1/{region}/choppers` - Helicopters only
-- `GET /docs` - Interactive API documentation
+- `POST /api/v1/aircraft/bulk` - **Pi Station API** for ADS-B data submission
+- `GET /docs` - Interactive Swagger API documentation
+- `GET /redoc` - Alternative ReDoc API documentation
 
 ## 🛠️ Development
 
@@ -140,6 +143,6 @@ The application includes several optimizations:
 ## 🏷️ Version
 
 **Current Version**: 1.0.0 - Production AWS Deployment
-**Last Updated**: 2025-06-18
+**Last Updated**: 2025-06-22
 **AWS Infrastructure**: ECS Fargate + ElastiCache + S3
-**Status**: ✅ Live and operational
+**Status**: ✅ Live and operational with Pi Station Network
