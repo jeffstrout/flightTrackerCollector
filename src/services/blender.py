@@ -18,42 +18,40 @@ class DataBlender:
     def blend_aircraft_data(self, 
                            dump1090_aircraft: List[Aircraft], 
                            opensky_aircraft: List[Aircraft]) -> List[Aircraft]:
-        """Blend aircraft data with dump1090 priority"""
+        """Blend aircraft data with dump1090 priority - dump1090 data updates OpenSky data"""
         blended = {}
         stats = {
             'dump1090_priority': 0,
             'opensky_only': 0,
-            'blended': 0,
+            'dump1090_updated': 0,
             'total': 0
         }
         
-        # First pass: Add dump1090 aircraft (highest priority)
-        for aircraft in dump1090_aircraft:
-            hex_code = aircraft.hex.upper()
-            if hex_code and self._is_quality_aircraft_data(aircraft):
-                aircraft.data_source = "dump1090"
-                blended[hex_code] = aircraft
-                stats['dump1090_priority'] += 1
-        
-        # Second pass: Add OpenSky aircraft
+        # First pass: Add OpenSky aircraft as base data
         for aircraft in opensky_aircraft:
             hex_code = aircraft.hex.upper()
-            if not hex_code:
-                continue
-            
-            if hex_code in blended:
-                # Aircraft already exists from dump1090
-                # Merge useful missing information
-                existing = blended[hex_code]
-                if not existing.flight and aircraft.flight:
-                    existing.flight = aircraft.flight
-                    existing.data_source = "blended"
-                    stats['blended'] += 1
-            else:
-                # New aircraft from OpenSky
+            if hex_code:
                 aircraft.data_source = "opensky"
                 blended[hex_code] = aircraft
                 stats['opensky_only'] += 1
+        
+        # Second pass: dump1090 aircraft override/update OpenSky data (highest priority)
+        for aircraft in dump1090_aircraft:
+            hex_code = aircraft.hex.upper()
+            if hex_code and self._is_quality_aircraft_data(aircraft):
+                if hex_code in blended:
+                    # Update existing OpenSky record with dump1090 data
+                    # dump1090 data completely replaces OpenSky data for this aircraft
+                    aircraft.data_source = "dump1090"
+                    blended[hex_code] = aircraft
+                    stats['dump1090_updated'] += 1
+                    stats['opensky_only'] -= 1  # No longer OpenSky-only
+                else:
+                    # New aircraft from dump1090
+                    aircraft.data_source = "dump1090"
+                    blended[hex_code] = aircraft
+                
+                stats['dump1090_priority'] += 1
         
         stats['total'] = len(blended)
         
@@ -65,7 +63,7 @@ class DataBlender:
         self._enrich_aircraft_data(aircraft_list)
         
         logger.info(f"🔀 Blend Stats: {stats['dump1090_priority']} dump1090 | "
-                   f"{stats['opensky_only']} opensky | {stats['blended']} blended | "
+                   f"{stats['opensky_only']} opensky | {stats['dump1090_updated']} updated | "
                    f"{stats['total']} total")
         
         return aircraft_list
@@ -125,10 +123,8 @@ class DataBlender:
         # Data source priority
         if aircraft.data_source == 'dump1090':
             score += 0  # Highest priority
-        elif aircraft.data_source == 'blended':
-            score += 100
         else:  # opensky
-            score += 200
+            score += 100
         
         # Distance penalty (closer = higher priority)
         if aircraft.distance_miles is not None:

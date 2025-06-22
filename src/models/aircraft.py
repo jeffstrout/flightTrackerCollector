@@ -19,7 +19,7 @@ class Aircraft(BaseModel):
     rssi: Optional[float] = Field(None, description="Signal strength (dump1090 only)")
     messages: Optional[int] = Field(None, description="Message count (dump1090 only)")
     distance_miles: Optional[float] = Field(None, description="Distance from center")
-    data_source: Literal["dump1090", "opensky", "blended"] = Field(..., description="Data source")
+    data_source: Literal["dump1090", "opensky"] = Field(..., description="Data source")
     registration: Optional[str] = Field(None, description="Aircraft registration")
     model: Optional[str] = Field(None, description="Aircraft model")
     operator: Optional[str] = Field(None, description="Airline/operator")
