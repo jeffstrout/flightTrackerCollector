@@ -14,10 +14,13 @@ from .services.collector_service import CollectorService
 from .api.endpoints import router
 from .utils.logging_config import setup_logging
 from .version import VERSION_INFO
+from .middleware.security import SecurityMiddleware, CloudWatchAlarmsService
 
 
-# Global collector service instance
+# Global service instances
 collector_service = None
+security_middleware_instance = None
+cloudwatch_service = CloudWatchAlarmsService()
 
 
 @asynccontextmanager
@@ -87,6 +90,11 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# Add security middleware with rate limiting
+# Note: We can't easily access the middleware instance after adding it this way
+# For now, security events will be logged but not available in status endpoint
+app.add_middleware(SecurityMiddleware, rate_limit_requests=100, rate_limit_window=60)
 
 # Additional CORS handling for preflight requests
 @app.options("/{full_path:path}")

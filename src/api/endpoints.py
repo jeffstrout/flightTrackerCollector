@@ -1,6 +1,7 @@
 import csv
 import io
 import uuid
+import logging
 from pathlib import Path
 from typing import Dict, List
 from fastapi import APIRouter, HTTPException, Response, Header, Request
@@ -20,6 +21,7 @@ from ..version import VERSION_INFO
 router = APIRouter()
 redis_service = RedisService()
 api_key_service = ApiKeyService()
+logger = logging.getLogger(__name__)
 
 # Initialize AWS Cost Service (optional, requires AWS permissions)
 try:
@@ -90,25 +92,90 @@ def format_tabular_data(data: Dict) -> str:
 
 @router.get("/status")
 async def get_status() -> Dict:
-    """Get system status and health information"""
+    """Get system status and health information with security monitoring"""
+    from ..main import collector_service, cloudwatch_service
+    
     # Get Redis status
     redis_status = redis_service.get_system_status()
     
-    # Get collector stats if available
-    collector_stats = {}
-    try:
-        # Note: In a real implementation, you'd have access to the collector service instance
-        # For now, we'll return basic status
-        collector_stats = {"message": "Collector stats would be available here"}
-    except Exception:
-        pass
+    # Get connected data sources
+    connected_sources = []
+    if collector_service:
+        try:
+            # Get data from Redis to see what sources are actively reporting
+            for region_name in collector_service.region_collectors.keys():
+                # Check for recent data from each source
+                flights_data = redis_service.get_region_data(region_name, "flights")
+                if flights_data and flights_data.get("aircraft"):
+                    # Analyze data sources from aircraft
+                    sources_in_region = set()
+                    for aircraft in flights_data.get("aircraft", []):
+                        data_source = aircraft.get("data_source", "unknown")
+                        sources_in_region.add(data_source)
+                    
+                    for source in sources_in_region:
+                        connected_sources.append({
+                            "region": region_name,
+                            "source": source,
+                            "last_update": flights_data.get("timestamp"),
+                            "aircraft_count": len([a for a in flights_data["aircraft"] if a.get("data_source") == source])
+                        })
+                
+                # Check configured collectors
+                if region_name in collector_service.region_collectors:
+                    region_data = collector_service.region_collectors[region_name]
+                    for collector in region_data['collectors']:
+                        collector_info = {
+                            "region": region_name,
+                            "type": type(collector).__name__.replace("Collector", "").lower(),
+                            "enabled": True,
+                            "status": "active" if collector.get_stats().get("last_success_time") else "idle"
+                        }
+                        # Only add if not already present from actual data
+                        if not any(s["source"] == collector_info["type"] and s["region"] == region_name for s in connected_sources):
+                            connected_sources.append({
+                                "region": region_name,
+                                "source": collector_info["type"],
+                                "last_update": None,
+                                "aircraft_count": 0,
+                                "status": collector_info["status"]
+                            })
+        except Exception as e:
+            logger.error(f"Error getting connected sources: {e}")
+    
+    # Get security events
+    # Note: Security events are logged but not accessible via status endpoint
+    # due to middleware architecture limitations
+    security_events = []
+    
+    # Get CloudWatch alarms
+    cloudwatch_alarms = []
+    if cloudwatch_service:
+        try:
+            cloudwatch_alarms = cloudwatch_service.get_recent_alarms(10)
+        except:
+            pass
     
     return {
         "status": "healthy",
         "version": VERSION_INFO,
         "timestamp": redis_service.redis_client.time()[0] if redis_service.redis_client else None,
         "redis": redis_status,
-        "collectors": collector_stats
+        "collectors": {
+            "connected_sources": connected_sources,
+            "total_sources": len(connected_sources),
+            "regions_active": len(set(s["region"] for s in connected_sources))
+        },
+        "security": {
+            "recent_events": security_events,
+            "cloudwatch_alarms": cloudwatch_alarms,
+            "security_headers_enabled": True,
+            "rate_limiting_enabled": True,
+            "rate_limit_config": {
+                "requests_per_window": 100,
+                "window_seconds": 60
+            }
+        }
     }
 
 

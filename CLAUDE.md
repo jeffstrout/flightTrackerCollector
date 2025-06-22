@@ -218,7 +218,11 @@ The application uses a centralized Redis instance with database separation:
 ### API Endpoints
 - `GET /` - Root endpoint with API information
 - `GET /health` - Health check endpoint
-- `GET /api/v1/status` - System health, collector status, and API rate limits
+- `GET /api/v1/status` - Enhanced system status with:
+  - System health and version information
+  - Connected data sources by region
+  - Security monitoring (events, CloudWatch alarms)
+  - Rate limiting configuration
 - `GET /api/v1/regions` - Returns all configured regions with their collectors
 - `GET /api/v1/{region}/flights` - Returns all flights for a region in JSON format
 - `GET /api/v1/{region}/flights/tabular` - Returns flights in tabular/CSV format
@@ -228,6 +232,13 @@ The application uses a centralized Redis instance with database separation:
 - `GET /api/v1/debug/memory` - Debug endpoint to view memory store
 - `GET /docs` - Auto-generated API documentation (FastAPI feature)
 - `GET /redoc` - Alternative API documentation interface
+
+### Security Features
+- **Rate Limiting**: 100 requests per minute per IP address
+- **Security Headers**: X-Frame-Options, X-Content-Type-Options, CSP, etc.
+- **Suspicious Request Detection**: Blocks common vulnerability scan patterns
+- **CloudWatch Integration**: Monitors security alarms in /status endpoint
+- **Request Logging**: Tracks security events and suspicious activity
 
 ### Testing Strategy
 - Unit tests for collectors and data transformations
