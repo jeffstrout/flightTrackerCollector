@@ -93,41 +93,38 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Create startup script as root first
-RUN cat > /app/start.sh << 'EOF'
-#!/bin/bash
-echo "🚀 Starting Flight Tracker Collector..."
-
-# Download aircraft database (continue even if it fails)
-if [ -f "/app/scripts/download_aircraft_db.sh" ]; then
-    echo "📥 Running aircraft database download script..."
-    /app/scripts/download_aircraft_db.sh || echo "⚠️  Aircraft database download failed, continuing without enrichment"
-fi
-
-# Download config if needed (continue even if it fails)
-if [ -f "/app/scripts/download_config.sh" ]; then
-    echo "📥 Running config download script..."
-    /app/scripts/download_config.sh || echo "⚠️  Config download failed, using default config"
-fi
-
-# Verify critical files exist
-echo "🔍 Verifying application files..."
-if [ ! -f "/app/src/main.py" ]; then
-    echo "❌ Critical error: main.py not found"
-    echo "📂 Contents of /app:"
-    ls -la /app/
-    echo "📂 Contents of /app/src:"
-    ls -la /app/src/ || echo "src directory not found"
-    exit 1
-fi
-
-# Start the application
-echo "🌐 Starting FastAPI server..."
-cd /app
-exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
-EOF
-
-# Make startup script executable and fix ownership
-RUN chmod +x /app/start.sh && chown appuser:appuser /app/start.sh
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'echo "🚀 Starting Flight Tracker Collector..."' \
+    '' \
+    '# Download aircraft database (continue even if it fails)' \
+    'if [ -f "/app/scripts/download_aircraft_db.sh" ]; then' \
+    '    echo "📥 Running aircraft database download script..."' \
+    '    /app/scripts/download_aircraft_db.sh || echo "⚠️  Aircraft database download failed, continuing without enrichment"' \
+    'fi' \
+    '' \
+    '# Download config if needed (continue even if it fails)' \
+    'if [ -f "/app/scripts/download_config.sh" ]; then' \
+    '    echo "📥 Running config download script..."' \
+    '    /app/scripts/download_config.sh || echo "⚠️  Config download failed, using default config"' \
+    'fi' \
+    '' \
+    '# Verify critical files exist' \
+    'echo "🔍 Verifying application files..."' \
+    'if [ ! -f "/app/src/main.py" ]; then' \
+    '    echo "❌ Critical error: main.py not found"' \
+    '    echo "📂 Contents of /app:"' \
+    '    ls -la /app/' \
+    '    echo "📂 Contents of /app/src:"' \
+    '    ls -la /app/src/ || echo "src directory not found"' \
+    '    exit 1' \
+    'fi' \
+    '' \
+    '# Start the application' \
+    'echo "🌐 Starting FastAPI server..."' \
+    'cd /app' \
+    'exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1' \
+    > /app/start.sh && chmod +x /app/start.sh && chown appuser:appuser /app/start.sh
 
 # Default command - run startup script
 CMD ["/app/start.sh"]
