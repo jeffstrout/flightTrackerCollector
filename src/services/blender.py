@@ -16,18 +16,21 @@ class DataBlender:
         self.aircraft_db = AircraftDatabase(redis_service)
     
     def blend_aircraft_data(self, 
+                           pi_station_aircraft: List[Aircraft],
                            dump1090_aircraft: List[Aircraft], 
                            opensky_aircraft: List[Aircraft]) -> List[Aircraft]:
-        """Blend aircraft data with dump1090 priority - dump1090 data updates OpenSky data"""
+        """Blend aircraft data with Pi station priority - Pi stations > dump1090 > OpenSky"""
         blended = {}
         stats = {
+            'pi_station_priority': 0,
             'dump1090_priority': 0,
             'opensky_only': 0,
+            'pi_station_updated': 0,
             'dump1090_updated': 0,
             'total': 0
         }
         
-        # First pass: Add OpenSky aircraft as base data
+        # First pass: Add OpenSky aircraft as base data (lowest priority)
         for aircraft in opensky_aircraft:
             hex_code = aircraft.hex.upper()
             if hex_code:
@@ -35,13 +38,12 @@ class DataBlender:
                 blended[hex_code] = aircraft
                 stats['opensky_only'] += 1
         
-        # Second pass: dump1090 aircraft override/update OpenSky data (highest priority)
+        # Second pass: dump1090 aircraft override OpenSky data (medium priority)
         for aircraft in dump1090_aircraft:
             hex_code = aircraft.hex.upper()
             if hex_code and self._is_quality_aircraft_data(aircraft):
                 if hex_code in blended:
                     # Update existing OpenSky record with dump1090 data
-                    # dump1090 data completely replaces OpenSky data for this aircraft
                     aircraft.data_source = "dump1090"
                     blended[hex_code] = aircraft
                     stats['dump1090_updated'] += 1
@@ -53,6 +55,27 @@ class DataBlender:
                 
                 stats['dump1090_priority'] += 1
         
+        # Third pass: Pi station aircraft override all other data (highest priority)
+        for aircraft in pi_station_aircraft:
+            hex_code = aircraft.hex.upper()
+            if hex_code and self._is_quality_aircraft_data(aircraft):
+                if hex_code in blended:
+                    # Update existing record with Pi station data
+                    # Keep original Pi station data_source (e.g., "pi_station_ETEX01")
+                    blended[hex_code] = aircraft
+                    stats['pi_station_updated'] += 1
+                    # Adjust previous counts
+                    if aircraft.data_source.startswith('pi_station'):
+                        if 'dump1090_priority' in stats and stats['dump1090_priority'] > 0:
+                            stats['dump1090_priority'] -= 1
+                        elif 'opensky_only' in stats and stats['opensky_only'] > 0:
+                            stats['opensky_only'] -= 1
+                else:
+                    # New aircraft from Pi station
+                    blended[hex_code] = aircraft
+                
+                stats['pi_station_priority'] += 1
+        
         stats['total'] = len(blended)
         
         # Convert back to list and sort by priority
@@ -62,8 +85,9 @@ class DataBlender:
         # Enrich with aircraft database information
         self._enrich_aircraft_data(aircraft_list)
         
-        logger.info(f"🔀 Blend Stats: {stats['dump1090_priority']} dump1090 | "
-                   f"{stats['opensky_only']} opensky | {stats['dump1090_updated']} updated | "
+        logger.info(f"🔀 Blend Stats: {stats['pi_station_priority']} pi_stations | "
+                   f"{stats['dump1090_priority']} dump1090 | {stats['opensky_only']} opensky | "
+                   f"{stats['pi_station_updated']} pi_updated | {stats['dump1090_updated']} dump_updated | "
                    f"{stats['total']} total")
         
         return aircraft_list
@@ -121,10 +145,12 @@ class DataBlender:
         score = 0
         
         # Data source priority
-        if aircraft.data_source == 'dump1090':
-            score += 0  # Highest priority
+        if aircraft.data_source.startswith('pi_station'):
+            score += 0  # Highest priority - Pi stations (local ADS-B)
+        elif aircraft.data_source == 'dump1090':
+            score += 50  # Medium priority - Local dump1090 collectors
         else:  # opensky
-            score += 100
+            score += 100  # Lowest priority - Global network
         
         # Distance penalty (closer = higher priority)
         if aircraft.distance_miles is not None:

@@ -7,6 +7,7 @@ from datetime import datetime
 from ..config.loader import Config
 from ..collectors.opensky import OpenSkyCollector
 from ..collectors.dump1090 import Dump1090Collector
+from ..models.aircraft import Aircraft
 from .blender import DataBlender
 from .redis_service import RedisService
 
@@ -156,10 +157,14 @@ class CollectorService:
         logger.info(f"Condition check: dump1090_aircraft={bool(dump1090_aircraft)}, opensky_aircraft={bool(opensky_aircraft)}")
         logger.info(f"dump1090_aircraft type: {type(dump1090_aircraft)}, opensky_aircraft type: {type(opensky_aircraft)}")
         
-        # Blend the data
-        if dump1090_aircraft or opensky_aircraft:
+        # Get Pi station data for this region
+        pi_station_aircraft = self._get_pi_station_data(region_name)
+        logger.info(f"Pi station data: {len(pi_station_aircraft)} aircraft")
+        
+        # Blend the data from all sources
+        if dump1090_aircraft or opensky_aircraft or pi_station_aircraft:
             logger.info("Entering blending logic...")
-            blended_aircraft = self.blender.blend_aircraft_data(dump1090_aircraft, opensky_aircraft)
+            blended_aircraft = self.blender.blend_aircraft_data(pi_station_aircraft, dump1090_aircraft, opensky_aircraft)
             logger.info(f"Blending completed: {len(blended_aircraft)} aircraft")
             
             helicopters = self.blender.identify_helicopters(blended_aircraft)
@@ -185,6 +190,50 @@ class CollectorService:
         else:
             logger.warning(f"No data collected for region {region_name}")
             return False
+    
+    def _get_pi_station_data(self, region_name: str) -> List[Aircraft]:
+        """Get Pi station data for a region from Redis"""
+        pi_aircraft = []
+        
+        try:
+            # Get all Pi station keys for this region
+            pattern = f"pi_data:{region_name}:*"
+            keys = self.redis_service.redis_client.keys(pattern)
+            
+            for key in keys:
+                try:
+                    # Get Pi station data
+                    data = self.redis_service.redis_client.get(key)
+                    if data:
+                        import json
+                        station_data = json.loads(data)
+                        
+                        # Convert Pi station aircraft to Aircraft objects
+                        for aircraft_data in station_data.get('aircraft', []):
+                            try:
+                                # Create Aircraft object from Pi station data
+                                aircraft = Aircraft(**aircraft_data)
+                                
+                                # Ensure data_source is preserved (e.g., "pi_station_ETEX01")
+                                if not aircraft.data_source.startswith('pi_station'):
+                                    aircraft.data_source = aircraft_data.get('data_source', f"pi_station_{station_data.get('station_id', 'unknown')}")
+                                
+                                pi_aircraft.append(aircraft)
+                                
+                            except Exception as e:
+                                logger.warning(f"Error converting Pi station aircraft data: {e}")
+                                continue
+                                
+                except Exception as e:
+                    logger.warning(f"Error processing Pi station key {key}: {e}")
+                    continue
+                    
+            logger.debug(f"Retrieved {len(pi_aircraft)} aircraft from {len(keys)} Pi stations for region {region_name}")
+            
+        except Exception as e:
+            logger.error(f"Error fetching Pi station data for region {region_name}: {e}")
+        
+        return pi_aircraft
     
     async def collect_all_regions(self):
         """Collect data for all enabled regions"""
