@@ -634,34 +634,9 @@ async def receive_bulk_aircraft_data(
         # Store with TTL (5 minutes like other flight data)
         redis_service.store_data(redis_key, station_data, ttl=300)
         
-        # Also merge with main region data for immediate availability
-        region = api_key_service.get_collector_region()
-        existing_data = redis_service.get_region_data(region, "flights") or {"aircraft": []}
-        
-        # Merge Pi station data with existing data - replace old data from same station
-        existing_aircraft = existing_data.get("aircraft", [])
-        current_station_source = f"pi_station_{request.station_id}"
-        
-        # Filter out old data from this same Pi station
-        filtered_aircraft = [
-            aircraft for aircraft in existing_aircraft 
-            if aircraft.get("data_source") != current_station_source
-        ]
-        
-        # Add new data from this Pi station
-        all_aircraft = filtered_aircraft + enriched_aircraft
-        
-        # Update region data with merged aircraft list
-        merged_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "aircraft_count": len(all_aircraft),
-            "aircraft": all_aircraft,
-            "data_sources": ["pi_stations", "collectors"],
-            "last_pi_update": request.timestamp.isoformat()
-        }
-        
-        # Store merged data
-        redis_service.store_region_data_generic(region, "flights", merged_data)
+        # Note: Pi station data will be picked up by the collector service during its
+        # normal collection cycle, where it will be properly blended with OpenSky data
+        # and enriched with aircraft database information via DataBlender
         
         logger.info(f"[{request_id}] Successfully processed {processed_count}/{len(request.aircraft)} "
                    f"aircraft from station {request.station_name}")
