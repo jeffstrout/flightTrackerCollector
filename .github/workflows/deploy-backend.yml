@@ -15,6 +15,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -139,46 +141,6 @@ jobs:
                   "awslogs-group": "${{ secrets.LOG_GROUP }}",
                   "awslogs-region": "${{ env.AWS_REGION }}",
                   "awslogs-stream-prefix": "web-api"
-                }
-              }
-            },
-            {
-              "name": "collector",
-              "image": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
-              "essential": true,
-              "command": ["/app/start.sh"],
-              "environment": [
-                {
-                  "name": "REDIS_HOST",
-                  "value": "$REDIS_ENDPOINT"
-                },
-                {
-                  "name": "REDIS_PORT",
-                  "value": "6379"
-                },
-                {
-                  "name": "REDIS_DB",
-                  "value": "0"
-                },
-                {
-                  "name": "LOG_LEVEL",
-                  "value": "INFO"
-                },
-                {
-                  "name": "CONFIG_FILE",
-                  "value": "collectors.yaml"
-                },
-                {
-                  "name": "COLLECTOR_REGION",
-                  "value": "etex"
-                }
-              ],
-              "logConfiguration": {
-                "logDriver": "awslogs",
-                "options": {
-                  "awslogs-group": "${{ secrets.LOG_GROUP }}",
-                  "awslogs-region": "${{ env.AWS_REGION }}",
-                  "awslogs-stream-prefix": "collector"
                 }
               }
             }
