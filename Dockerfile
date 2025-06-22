@@ -50,7 +50,8 @@ COPY --chown=appuser:appuser requirements.txt /app/
 COPY --chown=appuser:appuser run.py /app/
 
 # Verify files were copied
-RUN ls -la /app/ && ls -la /app/src/ && echo "main.py exists:" && ls -la /app/src/main.py
+RUN echo "=== /app contents ===" && ls -la /app/ && \
+    echo "=== /app/src contents ===" && ls -la /app/src/ || echo "src directory not found"
 
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/

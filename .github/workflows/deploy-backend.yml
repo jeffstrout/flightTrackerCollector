@@ -37,6 +37,19 @@ jobs:
           --output text)
         echo "endpoint=$REDIS_ENDPOINT" >> $GITHUB_OUTPUT
 
+    - name: Verify source files
+      run: |
+        echo "Current directory:"
+        pwd
+        echo "Directory contents:"
+        ls -la
+        echo "Source directory:"
+        ls -la src/
+        echo "Config directory:"
+        ls -la config/
+        echo "Scripts directory:"
+        ls -la scripts/
+
     - name: Build, tag, and push image to Amazon ECR
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
