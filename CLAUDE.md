@@ -532,6 +532,13 @@ python3 -m pip install -r requirements.txt
 - ✅ Aircraft database auto-reload capability
 - ✅ Infrastructure as Code documentation
 
+## 📊 Aircraft Database Requirements
+The system requires the `aircraftDatabase.csv` file to be uploaded to S3 at:
+- **S3 Location**: `s3://flight-tracker-web-ui-1750266711/config/aircraftDatabase.csv`
+- **File Size**: ~101MB
+- **Purpose**: Provides aircraft registration, model, operator, and type information for enrichment
+- **Auto-download**: The startup script downloads this file during container initialization
+
 ## 🛩️ Raspberry Pi ADS-B Forwarder
 
 ### Overview
