@@ -531,3 +531,135 @@ python3 -m pip install -r requirements.txt
 - ✅ Docker images in ECR
 - ✅ Aircraft database auto-reload capability
 - ✅ Infrastructure as Code documentation
+
+## 🛩️ Raspberry Pi ADS-B Forwarder
+
+### Overview
+The Raspberry Pi forwarder (`pi_forwarder/aircraft_forwarder.py`) collects aircraft data from a local dump1090 instance and forwards it to the Flight Tracker Collector API. This enables integration of local ADS-B receivers into the centralized tracking system.
+
+### Features
+- Polls dump1090 JSON API every 15 seconds
+- Forwards aircraft data to central API with station identification
+- Automatic retry on network failures
+- Configurable logging
+
+### Configuration
+The forwarder is configured with:
+- `API_ENDPOINT`: https://api.choppertracker.com/api/v1/aircraft/bulk
+- `API_KEY`: Station-specific API key (e.g., "etex.abc123def456ghi789jkl012")
+- `STATION_ID`: Unique station identifier (e.g., "ETEX01")
+- `DUMP1090_URL`: Local dump1090 endpoint (default: http://localhost:8080/data/aircraft.json)
+
+### Running as a Systemd Service
+
+1. **Create the service file** on the Raspberry Pi:
+```bash
+sudo nano /etc/systemd/system/aircraft-forwarder.service
+```
+
+2. **Add the service configuration**:
+```ini
+[Unit]
+Description=Aircraft Data Forwarder for dump1090
+After=network.target dump1090-fa.service
+Wants=dump1090-fa.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/aircraft-forwarder
+ExecStart=/usr/bin/python3 /home/pi/aircraft-forwarder/aircraft_forwarder.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. **Enable and start the service**:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable aircraft-forwarder.service
+sudo systemctl start aircraft-forwarder.service
+```
+
+### Service Management Commands
+
+**Check service status:**
+```bash
+sudo systemctl status aircraft-forwarder.service
+```
+
+**View logs:**
+```bash
+# Recent logs
+sudo journalctl -u aircraft-forwarder.service -n 50
+
+# Follow logs in real-time
+sudo journalctl -u aircraft-forwarder.service -f
+```
+
+**Control the service:**
+```bash
+# Stop the service
+sudo systemctl stop aircraft-forwarder.service
+
+# Restart the service
+sudo systemctl restart aircraft-forwarder.service
+
+# Disable from starting on boot
+sudo systemctl disable aircraft-forwarder.service
+```
+
+### Checking if the Forwarder is Running
+
+**Check process:**
+```bash
+ps aux | grep aircraft_forwarder
+```
+
+**Check systemd service:**
+```bash
+sudo systemctl status aircraft-forwarder
+```
+
+**Verify dump1090 is working:**
+```bash
+# Check dump1090 service
+sudo systemctl status dump1090-fa
+
+# Test dump1090 API
+curl http://localhost:8080/data/aircraft.json | jq '.aircraft | length'
+```
+
+**Test API connectivity:**
+```bash
+curl -I https://api.choppertracker.com/api/v1/aircraft/bulk
+```
+
+### Manual Running
+If you need to run the forwarder manually (for testing):
+```bash
+cd /home/pi/aircraft-forwarder
+python3 aircraft_forwarder.py
+```
+
+To run in background with screen:
+```bash
+screen -S forwarder
+python3 aircraft_forwarder.py
+# Detach with Ctrl+A, then D
+# Reattach later with: screen -r forwarder
+```
+
+### Schedule Configuration
+
+The Flight Tracker system has scheduled start/stop times:
+- **Start**: 7:00 AM CT (Central Time) daily
+- **Stop**: 11:00 PM CT (23:00) daily
+
+These are managed by AWS EventBridge rules that control the ECS service. The Raspberry Pi forwarder will continue attempting to send data even when the main service is stopped, but the data won't be processed until the service restarts.
