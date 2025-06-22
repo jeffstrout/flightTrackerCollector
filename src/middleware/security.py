@@ -181,6 +181,12 @@ class CloudWatchAlarmsService:
     
     def get_recent_alarms(self, limit: int = 10) -> List[Dict]:
         """Get recent CloudWatch alarms"""
+        # Temporarily disabled - ECS task role lacks CloudWatch permissions
+        # This prevents log spam while we focus on blending logic
+        return []
+        
+        # TODO: Add CloudWatch permissions to ECS task role to re-enable
+        # Required permissions: cloudwatch:DescribeAlarmHistory
         if not self.client:
             return []
         
