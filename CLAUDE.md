@@ -538,6 +538,7 @@ The system requires the `aircraftDatabase.csv` file to be uploaded to S3 at:
 - **File Size**: ~101MB
 - **Purpose**: Provides aircraft registration, model, operator, and type information for enrichment
 - **Auto-download**: The startup script downloads this file during container initialization
+- **Status**: Database uploaded to S3 and ready for use
 
 ## 🛩️ Raspberry Pi ADS-B Forwarder
 
