@@ -49,6 +49,9 @@ COPY --chown=appuser:appuser config/*.yaml /app/config/
 COPY --chown=appuser:appuser requirements.txt /app/
 COPY --chown=appuser:appuser run.py /app/
 
+# Verify files were copied
+RUN ls -la /app/ && ls -la /app/src/ && echo "main.py exists:" && ls -la /app/src/main.py
+
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
 COPY --chown=appuser:appuser scripts/download_config.sh /app/scripts/

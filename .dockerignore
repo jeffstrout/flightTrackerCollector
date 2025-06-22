@@ -54,9 +54,10 @@ notebooks/
 scripts/test_*.py
 pi_station_examples/
 
-# Large files
-*.csv
-!config/*.yaml
+# Large files (but not in config directory)
+aircraftDatabase.csv
+data/*.csv
+logs/*.csv
 
 # Build artifacts
 dist/
