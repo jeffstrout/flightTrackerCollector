@@ -31,8 +31,9 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -u 1000 appuser
 
-# Set working directory
+# Set working directory and fix ownership
 WORKDIR /app
+RUN chown appuser:appuser /app
 
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/appuser/.local
@@ -91,38 +92,42 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Create startup script that downloads dependencies then starts the app
-RUN echo '#!/bin/bash\n\
-echo "🚀 Starting Flight Tracker Collector..."\n\
-\n\
-# Download aircraft database (continue even if it fails)\n\
-if [ -f "/app/scripts/download_aircraft_db.sh" ]; then\n\
-    echo "📥 Running aircraft database download script..."\n\
-    /app/scripts/download_aircraft_db.sh || echo "⚠️  Aircraft database download failed, continuing without enrichment"\n\
-fi\n\
-\n\
-# Download config if needed (continue even if it fails)\n\
-if [ -f "/app/scripts/download_config.sh" ]; then\n\
-    echo "📥 Running config download script..."\n\
-    /app/scripts/download_config.sh || echo "⚠️  Config download failed, using default config"\n\
-fi\n\
-\n\
-# Verify critical files exist\n\
-echo "🔍 Verifying application files..."\n\
-if [ ! -f "/app/src/main.py" ]; then\n\
-    echo "❌ Critical error: main.py not found"\n\
-    echo "📂 Contents of /app:"\n\
-    ls -la /app/\n\
-    echo "📂 Contents of /app/src:"\n\
-    ls -la /app/src/ || echo "src directory not found"\n\
-    exit 1\n\
-fi\n\
-\n\
-# Start the application\n\
-echo "🌐 Starting FastAPI server..."\n\
-cd /app\n\
-exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1\n\
-' > /app/start.sh && chmod +x /app/start.sh
+# Create startup script as root first
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/bash
+echo "🚀 Starting Flight Tracker Collector..."
+
+# Download aircraft database (continue even if it fails)
+if [ -f "/app/scripts/download_aircraft_db.sh" ]; then
+    echo "📥 Running aircraft database download script..."
+    /app/scripts/download_aircraft_db.sh || echo "⚠️  Aircraft database download failed, continuing without enrichment"
+fi
+
+# Download config if needed (continue even if it fails)
+if [ -f "/app/scripts/download_config.sh" ]; then
+    echo "📥 Running config download script..."
+    /app/scripts/download_config.sh || echo "⚠️  Config download failed, using default config"
+fi
+
+# Verify critical files exist
+echo "🔍 Verifying application files..."
+if [ ! -f "/app/src/main.py" ]; then
+    echo "❌ Critical error: main.py not found"
+    echo "📂 Contents of /app:"
+    ls -la /app/
+    echo "📂 Contents of /app/src:"
+    ls -la /app/src/ || echo "src directory not found"
+    exit 1
+fi
+
+# Start the application
+echo "🌐 Starting FastAPI server..."
+cd /app
+exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
+EOF
+
+# Make startup script executable and fix ownership
+RUN chmod +x /app/start.sh && chown appuser:appuser /app/start.sh
 
 # Default command - run startup script
 CMD ["/app/start.sh"]
