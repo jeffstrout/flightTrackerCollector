@@ -41,16 +41,20 @@ jobs:
 
     - name: Verify source files
       run: |
-        echo "Current directory:"
+        echo "=== Current directory ==="
         pwd
-        echo "Directory contents:"
+        echo "=== Root directory contents ==="
         ls -la
-        echo "Source directory:"
-        ls -la src/
-        echo "Config directory:"
-        ls -la config/
-        echo "Scripts directory:"
-        ls -la scripts/
+        echo "=== Source directory ==="
+        ls -la src/ || echo "ERROR: src directory not found!"
+        echo "=== Main.py check ==="
+        ls -la src/main.py || echo "ERROR: main.py not found!"
+        echo "=== Config directory ==="
+        ls -la config/ || echo "ERROR: config directory not found!"
+        echo "=== Scripts directory ==="
+        ls -la scripts/ || echo "ERROR: scripts directory not found!"
+        echo "=== Git status ==="
+        git status --short
 
     - name: Build, tag, and push image to Amazon ECR
       env:
@@ -62,8 +66,9 @@ jobs:
         BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         BUILD_CLEAN=$([ -z "$(git status --porcelain)" ] && echo "true" || echo "false")
         
-        # Build with version information
+        # Build with version information (with progress output)
         docker build \
+          --progress=plain \
           --build-arg BUILD_COMMIT=${{ github.sha }} \
           --build-arg BUILD_BRANCH=${{ github.ref_name }} \
           --build-arg BUILD_TIME="$BUILD_TIME" \
