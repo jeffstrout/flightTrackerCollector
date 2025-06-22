@@ -30,7 +30,6 @@ logs/
 *.log
 .env
 .env.*
-!.env.example
 
 # Git
 .git/
@@ -39,11 +38,6 @@ logs/
 # CI/CD
 .github/
 
-# Documentation
-*.md
-!README.md
-!CLAUDE.md
-
 # Tests
 tests/
 test_*.py
@@ -51,13 +45,11 @@ test_*.py
 
 # Development files
 notebooks/
-scripts/test_*.py
 pi_station_examples/
 
-# Large files (but not in config directory)
-aircraftDatabase.csv
-data/*.csv
-logs/*.csv
+# Large CSV files in root only
+/aircraftDatabase.csv
+/data/*.csv
 
 # Build artifacts
 dist/

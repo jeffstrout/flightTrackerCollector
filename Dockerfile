@@ -43,15 +43,20 @@ ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_CLEAN=true
 
-# Copy application code (excluding aircraft database - downloaded at runtime)
-COPY --chown=appuser:appuser src/ /app/src/
-COPY --chown=appuser:appuser config/*.yaml /app/config/
+# Copy requirements first (for better caching)
 COPY --chown=appuser:appuser requirements.txt /app/
+
+# Copy application code
+COPY --chown=appuser:appuser src /app/src
+COPY --chown=appuser:appuser config /app/config
 COPY --chown=appuser:appuser run.py /app/
 
-# Verify files were copied
-RUN echo "=== /app contents ===" && ls -la /app/ && \
-    echo "=== /app/src contents ===" && ls -la /app/src/ || echo "src directory not found"
+# Verify critical files exist after copy
+RUN test -f /app/requirements.txt && echo "✓ requirements.txt found" || exit 1
+RUN test -f /app/run.py && echo "✓ run.py found" || exit 1
+RUN test -d /app/src && echo "✓ src directory found" || exit 1
+RUN test -f /app/src/main.py && echo "✓ main.py found" || exit 1
+RUN test -d /app/config && echo "✓ config directory found" || exit 1
 
 # Copy and make download script executable
 COPY --chown=appuser:appuser scripts/download_aircraft_db.sh /app/scripts/
