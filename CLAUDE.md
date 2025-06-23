@@ -257,6 +257,7 @@ The application uses a centralized Redis instance with database separation:
 - **Pydantic** - Data validation and settings management
 - **httpx** - Async HTTP client for API calls
 - **redis-py** - Redis client with async support
+- **MCP (Model Context Protocol)** - AI assistant integration framework
 
 ### Configuration Format (YAML)
 The application uses YAML configuration files to define regions, collectors, and airports.
@@ -405,6 +406,7 @@ python3 -m pip install -r requirements.txt
 #### Development
 - `python3 run.py --mode api --reload` - Run API server with auto-reload
 - `python3 run.py --mode cli` - Run collector only (no web interface)
+- `python3 run.py --mode mcp` - Run MCP server for AI assistant integration
 - `python3 -m pytest` - Run tests
 - `python3 -m black .` - Format code
 - `python3 -m flake8` - Lint code
@@ -412,6 +414,7 @@ python3 -m pip install -r requirements.txt
 #### Production
 - `python3 run.py --mode api --host 0.0.0.0 --port 8000` - Run API server
 - `uvicorn src.main:app --host 0.0.0.0 --port 8000` - Alternative API startup
+- `python3 run.py --mode mcp` - Run standalone MCP server
 
 #### Docker
 - `docker-compose up -d` - Run with included Redis (development)
@@ -421,6 +424,152 @@ python3 -m pip install -r requirements.txt
 - Set `CONFIG_FILE=collectors-dev.yaml` for Docker development
 - Set `CONFIG_FILE=collectors-local.yaml` for local development
 - Set `CONFIG_FILE=collectors.yaml` for production
+
+## MCP Integration (Model Context Protocol)
+
+### Overview
+The Flight Tracker Collector includes comprehensive MCP server functionality, enabling AI assistants to interact with live flight data through structured tools and resources. The MCP integration is fully compatible with Claude Desktop and other MCP clients.
+
+### Architecture
+- **Integrated MCP Server**: Runs within the FastAPI application (`/mcp/*` endpoints)
+- **Standalone MCP Server**: Separate process for external MCP clients
+- **Shared Data Access**: Uses existing Redis connections and collector services
+- **Real-time Data**: Direct access to live flight tracking information
+
+### MCP Tools (7 Available)
+
+#### Flight Data Tools
+1. **search_flights** - Search and filter flights by region, aircraft type, altitude, distance
+2. **get_aircraft_details** - Get comprehensive information about specific aircraft by hex code
+3. **track_helicopters** - Helicopter-specific tracking with detailed analysis
+4. **get_aircraft_by_distance** - Find aircraft within specified distance from coordinates
+
+#### System Monitoring Tools
+5. **get_region_stats** - Regional statistics and data collection metrics
+6. **get_system_status** - Overall system health and performance monitoring
+7. **check_data_sources** - Monitor status of Pi stations, OpenSky, and dump1090 sources
+
+### MCP Resources (7 Available)
+
+#### Live Data Resources
+1. **flights://etex/live** - Real-time flight data for East Texas region
+2. **flights://etex/helicopters** - Helicopter-specific data with analysis
+3. **system://status** - Current system health and performance metrics
+4. **system://collectors** - Data collector status and connectivity
+
+#### Configuration Resources
+5. **config://regions** - Regional configuration and settings
+6. **stats://collection** - Historical collection performance metrics
+7. **aircraft://database/schema** - Aircraft database structure and format
+
+### MCP Prompts (3 Available)
+1. **flight_analysis** - Analyze current flight activity in a region
+2. **system_health** - Check system health and data collection status
+3. **aircraft_profile** - Get detailed aircraft information and context
+
+### Usage Modes
+
+#### Integrated Mode (Default)
+MCP server runs within FastAPI application:
+```bash
+python run.py --mode api
+# MCP endpoints available at:
+# GET /mcp/info - Server information
+# GET /mcp/tools - List available tools
+# GET /mcp/resources - List available resources
+# POST /mcp/tool/{tool_name} - Execute tool
+# GET /mcp/resource?uri={uri} - Read resource
+```
+
+#### Standalone Mode (For Claude Desktop)
+Run dedicated MCP server with stdio transport:
+```bash
+python run.py --mode mcp
+```
+
+### Claude Desktop Configuration
+Add to Claude Desktop MCP configuration:
+```json
+{
+  "mcpServers": {
+    "flight-tracker": {
+      "command": "python",
+      "args": ["/path/to/flightTrackerCollector/run.py", "--mode", "mcp"],
+      "env": {
+        "CONFIG_FILE": "collectors-local.yaml",
+        "MCP_ENABLED": "true"
+      }
+    }
+  }
+}
+```
+
+### Configuration
+MCP settings in YAML config files:
+```yaml
+global:
+  mcp:
+    enabled: true
+    server_name: "flight-tracker-mcp"
+    server_version: "1.0.0"
+    transport: "stdio"  # stdio or websocket
+    features:
+      tools: true
+      resources: true
+      prompts: true
+```
+
+Environment variables:
+- `MCP_ENABLED` - Enable/disable MCP functionality
+- `MCP_HOST` - WebSocket host (future WebSocket transport)
+- `MCP_PORT` - WebSocket port (future WebSocket transport)
+
+### Example Usage
+
+#### Search for Helicopters
+```json
+{
+  "tool": "search_flights",
+  "arguments": {
+    "region": "etex",
+    "aircraft_type": "helicopters",
+    "max_altitude": 3000
+  }
+}
+```
+
+#### Get Aircraft Details
+```json
+{
+  "tool": "get_aircraft_details",
+  "arguments": {
+    "hex_code": "a12345"
+  }
+}
+```
+
+#### Find Nearby Aircraft
+```json
+{
+  "tool": "get_aircraft_by_distance",
+  "arguments": {
+    "region": "etex",
+    "latitude": 32.3513,
+    "longitude": -95.3011,
+    "max_distance": 25,
+    "limit": 10
+  }
+}
+```
+
+### Integration Benefits
+- **Real-time Flight Data**: Direct access to live tracking information
+- **AI-Optimized**: Structured tools designed for natural language interaction
+- **Production Ready**: Uses existing infrastructure and monitoring
+- **Zero Overhead**: Shares Redis connections and collector services
+- **Extensible**: Easy to add new tools and resources
+
+For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 
 ## Troubleshooting
 

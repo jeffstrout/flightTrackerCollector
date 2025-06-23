@@ -18,9 +18,9 @@ def main():
     parser = argparse.ArgumentParser(description="Flight Tracker Collector")
     parser.add_argument(
         "--mode", 
-        choices=["api", "cli"], 
+        choices=["api", "cli", "mcp"], 
         default="api",
-        help="Run mode: api (web server) or cli (collector only)"
+        help="Run mode: api (web server), cli (collector only), or mcp (MCP server)"
     )
     parser.add_argument(
         "--host", 
@@ -57,6 +57,11 @@ def main():
         # Run CLI collector
         from src.cli import main as cli_main
         cli_main()
+    elif args.mode == "mcp":
+        # Run MCP server
+        import asyncio
+        from src.mcp_runner import main as mcp_main
+        asyncio.run(mcp_main())
 
 
 if __name__ == "__main__":

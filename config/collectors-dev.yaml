@@ -21,6 +21,19 @@ global:
     retry_attempts: 3
     timeout: 10
     backoff_factor: 2
+  
+  mcp:
+    enabled: true
+    server_name: "flight-tracker-mcp-dev"
+    server_version: "1.0.0-dev"
+    transport: "stdio"
+    websocket:
+      host: "localhost"
+      port: 8001
+    features:
+      tools: true
+      resources: true
+      prompts: true
 
 # Region definitions
 regions:

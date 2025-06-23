@@ -22,6 +22,19 @@ global:
     retry_attempts: 3
     timeout: 10
     backoff_factor: 2  # Exponential backoff multiplier
+  
+  mcp:
+    enabled: ${MCP_ENABLED:-true}
+    server_name: "flight-tracker-mcp"
+    server_version: "1.0.0"
+    transport: "stdio"  # stdio or websocket
+    websocket:
+      host: ${MCP_HOST:-localhost}
+      port: ${MCP_PORT:-8001}
+    features:
+      tools: true
+      resources: true
+      prompts: true
 
 # Region definitions
 regions:

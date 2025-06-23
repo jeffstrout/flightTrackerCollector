@@ -15,18 +15,20 @@ from .api.endpoints import router
 from .utils.logging_config import setup_logging
 from .version import VERSION_INFO
 from .middleware.security import SecurityMiddleware, CloudWatchAlarmsService
+from .mcp import MCPServer
 
 
 # Global service instances
 collector_service = None
 security_middleware_instance = None
 cloudwatch_service = CloudWatchAlarmsService()
+mcp_server = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan context manager"""
-    global collector_service
+    global collector_service, mcp_server
     
     # Startup
     logging.info("Starting Flight Tracker Collector API")
@@ -42,10 +44,16 @@ async def lifespan(app: FastAPI):
         # Initialize collector service
         collector_service = CollectorService(config)
         
+        # Initialize MCP server with shared services
+        from .services.redis_service import RedisService
+        redis_service = RedisService()
+        mcp_server = MCPServer(redis_service, collector_service)
+        
         # Start background collection task
         collection_task = asyncio.create_task(collector_service.run_continuous())
         
         logging.info("Flight Tracker Collector API started successfully")
+        logging.info("MCP server initialized and ready")
         
         yield
         
@@ -149,6 +157,65 @@ async def root():
 async def health():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+
+# MCP endpoints
+@app.get("/mcp/info")
+async def mcp_info():
+    """Get MCP server information"""
+    global mcp_server
+    if mcp_server is None:
+        return {"error": "MCP server not initialized"}
+    return mcp_server.get_server_info()
+
+
+@app.get("/mcp/tools")
+async def mcp_tools():
+    """List available MCP tools"""
+    global mcp_server
+    if mcp_server is None:
+        return {"error": "MCP server not initialized"}
+    return {"tools": [tool.model_dump() for tool in mcp_server.tools.list_tools()]}
+
+
+@app.get("/mcp/resources")
+async def mcp_resources():
+    """List available MCP resources"""
+    global mcp_server
+    if mcp_server is None:
+        return {"error": "MCP server not initialized"}
+    return {"resources": [resource.model_dump() for resource in mcp_server.resources.list_resources()]}
+
+
+@app.post("/mcp/tool/{tool_name}")
+async def mcp_call_tool(tool_name: str, arguments: dict = None):
+    """Execute an MCP tool"""
+    global mcp_server
+    if mcp_server is None:
+        return {"error": "MCP server not initialized"}
+    
+    if arguments is None:
+        arguments = {}
+    
+    try:
+        result = await mcp_server.tools.call_tool(tool_name, arguments)
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/mcp/resource")
+async def mcp_read_resource(uri: str):
+    """Read an MCP resource"""
+    global mcp_server
+    if mcp_server is None:
+        return {"error": "MCP server not initialized"}
+    
+    try:
+        content = await mcp_server.resources.read_resource(uri)
+        return {"uri": uri, "content": content}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

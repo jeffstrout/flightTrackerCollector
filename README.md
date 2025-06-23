@@ -25,6 +25,7 @@ A comprehensive Python application that collects flight data from multiple sourc
 - **Pi Station Network** support for distributed ADS-B receivers
 - **RESTful API** with automatic Swagger documentation
 - **Web dashboard** with interactive map
+- **MCP Integration** for AI assistant interaction (Claude Desktop compatible)
 - **Rate limiting, security & caching** for optimal performance
 
 ## 🚀 Quick Start
@@ -74,6 +75,7 @@ Key configuration sections:
 
 ## 📡 API Endpoints
 
+### Flight Data API
 - `GET /` - Root endpoint with API information
 - `GET /health` - Health check
 - `GET /config.js` - Frontend configuration
@@ -85,6 +87,13 @@ Key configuration sections:
 - `POST /api/v1/aircraft/bulk` - **Pi Station API** for ADS-B data submission
 - `GET /docs` - Interactive Swagger API documentation
 - `GET /redoc` - Alternative ReDoc API documentation
+
+### MCP (Model Context Protocol) Endpoints
+- `GET /mcp/info` - MCP server information and capabilities
+- `GET /mcp/tools` - List available MCP tools for AI interaction
+- `GET /mcp/resources` - List available MCP resources
+- `POST /mcp/tool/{tool_name}` - Execute MCP tool with arguments
+- `GET /mcp/resource?uri={uri}` - Read MCP resource content
 
 ## 🛠️ Development
 
@@ -103,7 +112,55 @@ python run.py --mode api --reload
 
 # Run collector only (no web interface)
 python run.py --mode cli
+
+# Run MCP server for AI assistant integration
+python run.py --mode mcp
 ```
+
+## 🤖 MCP Integration (AI Assistant Support)
+
+The Flight Tracker Collector includes integrated **Model Context Protocol (MCP)** support, enabling AI assistants like Claude to interact with live flight data through structured tools.
+
+### MCP Tools Available
+- **search_flights** - Search and filter flights by region, altitude, aircraft type
+- **get_aircraft_details** - Get detailed information about specific aircraft
+- **track_helicopters** - Helicopter-specific tracking and analysis
+- **get_region_stats** - Regional statistics and data collection metrics
+- **get_system_status** - System health and performance monitoring
+- **check_data_sources** - Monitor data collection sources (Pi stations, OpenSky, dump1090)
+- **get_aircraft_by_distance** - Find aircraft near specific coordinates
+
+### MCP Usage Modes
+
+**Integrated Mode** (Default - API endpoints available):
+```bash
+python run.py --mode api
+# Access MCP via HTTP at /mcp/* endpoints
+```
+
+**Standalone MCP Server** (For Claude Desktop):
+```bash
+python run.py --mode mcp
+# Runs stdio MCP server for external clients
+```
+
+### Claude Desktop Configuration
+Add to your Claude Desktop MCP settings:
+```json
+{
+  "mcpServers": {
+    "flight-tracker": {
+      "command": "python",
+      "args": ["/path/to/flightTrackerCollector/run.py", "--mode", "mcp"],
+      "env": {
+        "CONFIG_FILE": "collectors-local.yaml"
+      }
+    }
+  }
+}
+```
+
+For detailed MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 
 ## 🚢 Deployment
 

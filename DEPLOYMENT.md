@@ -131,6 +131,71 @@ aws elasticache describe-cache-clusters --cache-cluster-id flight-tracker-redis
 - **Cache Hit Rate**: Monitor Redis statistics via `/api/v1/status`
 - **Aircraft Count**: Typically 200-300 aircraft in East Texas region
 
+## 🤖 MCP Deployment
+
+### MCP Integration Overview
+
+The Flight Tracker Collector includes integrated **Model Context Protocol (MCP)** server functionality that runs within the main FastAPI application. MCP enables AI assistants like Claude to interact with live flight data through structured tools.
+
+### MCP Production Deployment
+
+**Integrated Mode** (Default):
+- MCP server runs automatically within the FastAPI application
+- Access MCP endpoints at: `https://api.choppertracker.com/mcp/*`
+- No additional infrastructure required
+
+**Available MCP Endpoints**:
+- `GET /mcp/info` - Server information and capabilities
+- `GET /mcp/tools` - List available tools for AI interaction
+- `GET /mcp/resources` - List available data resources
+- `POST /mcp/tool/{tool_name}` - Execute MCP tools
+- `GET /mcp/resource?uri={uri}` - Read resource content
+
+### MCP Configuration in Production
+
+The MCP server is configured via the main configuration file:
+
+```yaml
+global:
+  mcp:
+    enabled: true
+    server_name: "flight-tracker-mcp"
+    server_version: "1.0.0"
+    transport: "stdio"
+    features:
+      tools: true
+      resources: true
+      prompts: true
+```
+
+Environment variables for MCP:
+- `MCP_ENABLED=true` - Enable MCP functionality (default: true)
+
+### MCP Standalone Deployment (Optional)
+
+For external MCP clients (like Claude Desktop), you can run a standalone MCP server:
+
+```bash
+# On production server
+python run.py --mode mcp
+```
+
+This runs the MCP server with stdio transport for external integration.
+
+### MCP Monitoring
+
+Monitor MCP functionality through:
+- **Health Endpoint**: `GET /mcp/info` - Check MCP server status
+- **Application Logs**: MCP operations logged with main application
+- **Tool Usage**: Monitor via CloudWatch logs for MCP tool execution
+
+### MCP Security
+
+- MCP endpoints inherit all security features from the main API
+- Rate limiting applies to MCP endpoints
+- Same CORS and security headers
+- No additional authentication required for MCP endpoints (same as flight API)
+
 ## 🔧 Configuration Updates
 
 ### Adding New Regions
@@ -159,6 +224,9 @@ collectors:
 | `CONFIG_FILE` | Configuration file | `collectors.yaml` |
 | `OPENSKY_USERNAME` | OpenSky API username | (optional) |
 | `OPENSKY_PASSWORD` | OpenSky API password | (optional) |
+| `MCP_ENABLED` | Enable MCP server functionality | `true` |
+| `MCP_HOST` | MCP WebSocket host (future) | `localhost` |
+| `MCP_PORT` | MCP WebSocket port (future) | `8001` |
 
 ## 🚨 Troubleshooting
 
