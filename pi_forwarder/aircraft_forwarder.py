@@ -128,7 +128,7 @@ class AircraftForwarder:
         filtered_aircraft = self.filter_aircraft(aircraft)
         return self.send_aircraft_data(filtered_aircraft)
     
-    def run_continuous(self, dump1090_url: str, interval: int = 30):
+    def run_continuous(self, dump1090_url: str, interval: int = 5):
         """Run continuous collection and sending"""
         logger.info(f"Starting continuous forwarding every {interval} seconds")
         logger.info(f"Station: {self.station_name} ({self.station_id})")
@@ -157,7 +157,7 @@ def main():
     parser.add_argument('--station-id', default=STATION_ID, help='Unique station identifier')
     parser.add_argument('--station-name', default=STATION_NAME, help='Friendly station name')
     parser.add_argument('--dump1090-url', default=DUMP1090_URL, help='dump1090 JSON data URL')
-    parser.add_argument('--interval', type=int, default=30, help='Send interval in seconds')
+    parser.add_argument('--interval', type=int, default=5, help='Send interval in seconds')
     parser.add_argument('--once', action='store_true', help='Run once and exit')
     
     args = parser.parse_args()
