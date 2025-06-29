@@ -79,21 +79,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
-origins = [
-    "http://www.choppertracker.com",
-    "http://choppertracker.com",
-    "https://www.choppertracker.com",
-    "https://choppertracker.com",
-    "http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com",
-    "http://localhost:3000",
-    "http://localhost:5173",
-]
-
+# Add CORS middleware - allow all origins for public flight tracking API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins since this is a public read-only API
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
