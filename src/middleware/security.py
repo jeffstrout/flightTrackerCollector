@@ -146,13 +146,13 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         client_ip = self._get_client_ip(request)
         is_cloudfront = self._is_cloudfront_ip(client_ip)
         
-        # Log CloudFront detection for debugging (only for frontend endpoints)
-        if is_cloudfront and request.url.path.startswith("/api/v1/"):
+        # Log CloudFront detection for debugging (all API requests for now)
+        if request.url.path.startswith("/api/v1/"):
             rate_limit = self._get_rate_limit_for_path(request.url.path, is_cloudfront)
-            logger.info(f"CloudFront request detected: {client_ip} -> {request.url.path} (rate limit: {rate_limit}/min)")
+            logger.info(f"API request: {client_ip} -> {request.url.path} (CloudFront: {is_cloudfront}, rate limit: {rate_limit}/min)")
         
-        # Skip rate limiting for health checks and internal AWS IPs
-        if request.url.path in ["/health", "/api/v1/status"] and client_ip.startswith(("172.", "10.")):
+        # Skip rate limiting for health checks from internal AWS IPs
+        if request.url.path == "/health" and client_ip.startswith(("172.", "10.")):
             response = await call_next(request)
             return self._add_security_headers(response)
         
