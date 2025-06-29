@@ -22,6 +22,32 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         self.security_events: List[Dict] = []
         self.max_security_events = 100  # Keep last 100 events
         
+        # CloudFront IP ranges that should be whitelisted for frontend access
+        # These are common CloudFront edge server IP ranges
+        self.cloudfront_ip_ranges = [
+            "107.131.",     # Common CloudFront range
+            "13.32.",       # AWS CloudFront
+            "13.35.",       # AWS CloudFront
+            "18.64.",       # AWS CloudFront
+            "52.85.",       # AWS CloudFront
+            "54.192.",      # AWS CloudFront
+            "54.230.",      # AWS CloudFront
+            "54.239.",      # AWS CloudFront
+            "99.84.",       # AWS CloudFront
+            "204.246.",     # AWS CloudFront
+            "205.251.",     # AWS CloudFront
+        ]
+        
+        # Frontend endpoints that need higher rate limits (requests per minute)
+        self.frontend_endpoints = {
+            "/api/v1/regions": 60,           # Initial load, occasional refresh
+            "/api/v1/status": 60,            # Periodic health checks
+            "/api/v1/etex/flights": 240,     # Every 3 seconds = 20/min, allow 4x buffer
+            "/api/v1/etex/choppers": 240,    # Helicopter tracking, same frequency
+            "/api/v1/socal/flights": 240,    # SoCal region if enabled
+            "/api/v1/socal/choppers": 240,   # SoCal helicopters
+        }
+        
         # Suspicious patterns to detect
         self.suspicious_patterns = [
             ".env", ".git", ".aws", "wp-admin", "phpmyadmin", "admin.php",
@@ -45,9 +71,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # Fall back to direct connection IP
         return request.client.host if request.client else "unknown"
     
-    def _is_rate_limited(self, client_ip: str) -> bool:
+    def _is_cloudfront_ip(self, client_ip: str) -> bool:
+        """Check if IP address is from CloudFront"""
+        return any(client_ip.startswith(prefix) for prefix in self.cloudfront_ip_ranges)
+    
+    def _get_rate_limit_for_path(self, path: str, is_cloudfront: bool) -> int:
+        """Get appropriate rate limit for the path"""
+        if is_cloudfront and path in self.frontend_endpoints:
+            return self.frontend_endpoints[path]
+        return self.rate_limit_requests
+    
+    def _is_rate_limited(self, client_ip: str, request_path: str) -> bool:
         """Check if client IP is rate limited"""
         now = time.time()
+        
+        # Determine if this is a CloudFront IP and get appropriate rate limit
+        is_cloudfront = self._is_cloudfront_ip(client_ip)
+        rate_limit = self._get_rate_limit_for_path(request_path, is_cloudfront)
         
         # Clean old requests outside the window
         self.request_counts[client_ip] = [
@@ -56,7 +96,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         ]
         
         # Check if over limit
-        if len(self.request_counts[client_ip]) >= self.rate_limit_requests:
+        if len(self.request_counts[client_ip]) >= rate_limit:
             return True
         
         # Add current request
@@ -104,6 +144,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Process request with security checks"""
         client_ip = self._get_client_ip(request)
+        is_cloudfront = self._is_cloudfront_ip(client_ip)
+        
+        # Log CloudFront detection for debugging (only for frontend endpoints)
+        if is_cloudfront and request.url.path.startswith("/api/v1/"):
+            rate_limit = self._get_rate_limit_for_path(request.url.path, is_cloudfront)
+            logger.info(f"CloudFront request detected: {client_ip} -> {request.url.path} (rate limit: {rate_limit}/min)")
         
         # Skip rate limiting for health checks and internal AWS IPs
         if request.url.path in ["/health", "/api/v1/status"] and client_ip.startswith(("172.", "10.")):
@@ -111,11 +157,20 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return self._add_security_headers(response)
         
         # Check rate limiting
-        if self._is_rate_limited(client_ip):
+        if self._is_rate_limited(client_ip, request.url.path):
+            is_cloudfront = self._is_cloudfront_ip(client_ip)
+            rate_limit = self._get_rate_limit_for_path(request.url.path, is_cloudfront)
+            
             self._log_security_event(
                 "rate_limit_exceeded",
                 client_ip,
-                {"path": request.url.path, "method": request.method}
+                {
+                    "path": request.url.path, 
+                    "method": request.method,
+                    "is_cloudfront": is_cloudfront,
+                    "rate_limit_used": rate_limit,
+                    "user_agent": request.headers.get("User-Agent", "")[:100]
+                }
             )
             return JSONResponse(
                 status_code=429,
