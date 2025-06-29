@@ -92,7 +92,7 @@ app.add_middleware(
 # Add security middleware with rate limiting
 # Note: We can't easily access the middleware instance after adding it this way
 # For now, security events will be logged but not available in status endpoint
-app.add_middleware(SecurityMiddleware, rate_limit_requests=300, rate_limit_window=60)
+app.add_middleware(SecurityMiddleware, rate_limit_requests=1000, rate_limit_window=60)
 
 # Additional CORS handling for preflight requests
 @app.options("/{full_path:path}")
