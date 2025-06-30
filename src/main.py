@@ -89,7 +89,12 @@ app.add_middleware(
         "*.choppertracker.com",
         "flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com",
         "localhost",
-        "127.0.0.1"
+        "127.0.0.1",
+        # Allow internal AWS networking for health checks
+        "172.31.*",  # VPC internal IPs
+        "10.*",      # Private network range
+        "192.168.*", # Private network range
+        "*"          # Temporary - allow all until we debug
     ]
 )
 
