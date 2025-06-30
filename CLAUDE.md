@@ -2,9 +2,15 @@
 
 🌐 **Live Production System**: ✅ **Operational**
 
-**Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
+**Web Interface**: https://choppertracker.com/
 **API Endpoint**: https://api.choppertracker.com/api/v1
 **API Documentation**: https://api.choppertracker.com/docs
+
+### 🎯 **Enterprise DNS Infrastructure**
+- **Domain**: choppertracker.com (managed via AWS Route 53)
+- **SSL/TLS**: Wildcard certificate (*.choppertracker.com) via AWS Certificate Manager
+- **CDN**: CloudFront distribution for global performance
+- **DNS Management**: Migrated from GoDaddy forwarding to AWS Route 53 for professional DNS control
 
 ## Purpose
 A comprehensive Python application deployed on AWS that polls multiple flight data sources, merges the data in Redis cache, and provides both RESTful APIs and a React web interface for real-time aircraft tracking.
@@ -238,8 +244,15 @@ The application uses a centralized Redis instance with database separation:
 - `GET /redoc` - Alternative API documentation interface (ReDoc)
 
 ### Security Features
-- **Rate Limiting**: 100 requests per minute per IP address
+- **Rate Limiting**: 1000 requests per minute per IP address with intelligent scaling
+  - **CloudFront IP Detection**: Higher limits for frontend traffic
+  - **Path-Specific Limits**: Customized limits per endpoint type
+  - **Rate Limit Headers**: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+- **Trusted Hosts**: FastAPI TrustedHostMiddleware validates allowed domains
+  - **Allowed Hosts**: api.choppertracker.com, *.choppertracker.com, ALB hostname
+  - **Host Header Validation**: Prevents host header injection attacks
 - **Security Headers**: X-Frame-Options, X-Content-Type-Options, CSP, etc.
+- **CORS Configuration**: Optimized for public API access with proper origin control
 - **Suspicious Request Detection**: Blocks common vulnerability scan patterns
 - **CloudWatch Integration**: Monitors security alarms in /status endpoint
 - **Request Logging**: Tracks security events and suspicious activity
@@ -601,6 +614,32 @@ For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 - Should not occur with ICAO-only detection
 - If it does, check aircraft database data quality
 
+### DNS and Vanity Domain Issues
+
+**Pi forwarder getting HTTP 405 errors**:
+- Check DNS resolution: `nslookup api.choppertracker.com` should return AWS ALB IPs
+- Clear DNS cache: `sudo systemctl restart systemd-resolved`
+- Verify endpoint URL uses HTTPS: `https://api.choppertracker.com/api/v1/aircraft/bulk`
+- Check TrustedHostMiddleware configuration in FastAPI
+
+**Vanity domain not resolving**:
+- Verify Route 53 nameservers are set at GoDaddy domain registrar
+- Check DNS propagation: `dig api.choppertracker.com` should show ALB IPs
+- Allow 24-48 hours for worldwide DNS propagation
+- Test with different DNS servers: `nslookup api.choppertracker.com 8.8.8.8`
+
+**SSL/TLS certificate errors**:
+- Verify certificate covers domain: check `https://api.choppertracker.com` in browser
+- Certificate ARN: `arn:aws:acm:us-east-1:958933162000:certificate/02d66134-03c5-4974-8846-9ddeafb05bcd`
+- Ensure certificate is attached to ALB HTTPS listener
+- Check certificate validation status in AWS Certificate Manager
+
+**Frontend console errors with vanity domains**:
+- Verify CORS configuration allows vanity domain origins
+- Check TrustedHostMiddleware includes all required domains
+- Update frontend config files to use HTTPS vanity domains
+- Clear browser cache and DNS cache
+
 ### Log Monitoring
 
 **Key log messages to monitor**:
@@ -686,7 +725,7 @@ For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 
 ## 🛠️ Infrastructure Overview
 
-**AWS Resources**:
+**Core AWS Resources**:
 - **ECS Cluster**: `flight-tracker-cluster`
 - **ECS Service**: `flight-tracker-backend` (2 containers)
 - **Load Balancer**: `flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com`
@@ -694,6 +733,22 @@ For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 - **Frontend**: S3 bucket `flight-tracker-web-ui-1750266711`
 - **Container Registry**: ECR `flight-tracker-backend`
 - **Monitoring**: CloudWatch `/ecs/flight-tracker`
+
+**DNS and SSL Infrastructure**:
+- **Route 53 Hosted Zone**: `Z00338903KGJNP3LIZGMA` (choppertracker.com)
+- **DNS Records**: 
+  - `choppertracker.com` → ALB (A record alias)
+  - `api.choppertracker.com` → ALB (A record alias)
+  - `www.choppertracker.com` → choppertracker.com (CNAME)
+- **SSL Certificate**: `arn:aws:acm:us-east-1:958933162000:certificate/02d66134-03c5-4974-8846-9ddeafb05bcd`
+  - **Coverage**: `choppertracker.com` and `*.choppertracker.com`
+  - **Validation**: DNS-validated via Route 53
+  - **Status**: Issued and attached to ALB HTTPS listener
+
+**Domain Migration**:
+- **Previous**: GoDaddy forwarding (limited functionality)
+- **Current**: AWS Route 53 (enterprise-grade DNS management)
+- **Benefits**: Proper subdomain support, SSL automation, global DNS performance
 
 ## 📋 Maintenance Tasks
 
@@ -854,3 +909,54 @@ The Flight Tracker system has scheduled start/stop times:
 - **Stop**: 11:00 PM CT (23:00) daily
 
 These are managed by AWS EventBridge rules that control the ECS service. The Raspberry Pi forwarder will continue attempting to send data even when the main service is stopped, but the data won't be processed until the service restarts.
+
+## 🌐 DNS Infrastructure Migration (2025-06-30)
+
+### Enterprise DNS Setup with AWS Route 53
+
+The system was migrated from GoDaddy domain forwarding to AWS Route 53 for professional DNS management, enabling proper vanity domain support and SSL automation.
+
+#### Migration Overview
+- **From**: GoDaddy forwarding (limited subdomain support)
+- **To**: AWS Route 53 (enterprise-grade DNS management)
+- **Outcome**: Full control over subdomains, SSL automation, global performance
+
+#### DNS Configuration
+**Route 53 Hosted Zone**: `Z00338903KGJNP3LIZGMA`
+
+**DNS Records**:
+```
+choppertracker.com          A    → ALB (alias)
+api.choppertracker.com      A    → ALB (alias)  
+www.choppertracker.com      CNAME → choppertracker.com
+```
+
+**SSL Certificate**: Wildcard certificate for `*.choppertracker.com`
+- **ARN**: `arn:aws:acm:us-east-1:958933162000:certificate/02d66134-03c5-4974-8846-9ddeafb05bcd`
+- **Validation**: DNS-validated via Route 53
+- **Coverage**: choppertracker.com and all subdomains
+
+#### Implementation Steps Completed
+1. **Route 53 Hosted Zone Creation**: Created DNS zone for choppertracker.com
+2. **DNS Records Configuration**: A records for main domain and API subdomain
+3. **SSL Certificate Request**: Wildcard certificate automatically validated
+4. **ALB SSL Configuration**: Certificate attached to HTTPS listener
+5. **GoDaddy Nameserver Update**: Delegated DNS to AWS Route 53
+6. **FastAPI Host Validation**: Added TrustedHostMiddleware for vanity domains
+
+#### Benefits Achieved
+✅ **Professional Domain Management**: Full control over DNS records  
+✅ **SSL Automation**: Automatic certificate validation and renewal  
+✅ **Subdomain Support**: Unlimited subdomain creation (api.*, admin.*, etc.)  
+✅ **Global Performance**: AWS's global DNS infrastructure  
+✅ **Security**: Proper SSL/TLS for all endpoints  
+✅ **Scalability**: Easy addition of new services and subdomains  
+
+#### Technical Details
+- **Nameservers**: Migrated from GoDaddy to AWS Route 53
+- **DNS Propagation**: 24-48 hours for worldwide DNS cache updates
+- **ALB Integration**: Direct A record aliases to Application Load Balancer
+- **Certificate Management**: Automated via AWS Certificate Manager
+- **Host Header Validation**: FastAPI configured to accept vanity domains
+
+This migration established enterprise-grade DNS infrastructure supporting the growing flight tracking platform.
