@@ -14,7 +14,7 @@ import argparse
 import os
 
 # Configuration
-API_ENDPOINT = "https://api.choppertracker.com/api/v1/aircraft/bulk"
+API_ENDPOINT = "http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1/aircraft/bulk"
 API_KEY = "etex.abc123def456ghi789jkl012"
 STATION_ID = "ETEX01"
 STATION_NAME = "East Texas 01"
