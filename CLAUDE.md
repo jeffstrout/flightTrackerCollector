@@ -245,34 +245,10 @@ The application uses a centralized Redis instance with database separation:
 - **Request Logging**: Tracks security events and suspicious activity
 
 ### Testing Strategy
-
-#### Development Testing
-- **Unit Tests**: Collectors, data transformations, exception handling
-- **Integration Tests**: Redis connectivity, API endpoints, AWS services
-- **Mock Testing**: External API responses, error conditions
-- **Exception Testing**: Custom exception hierarchy validation
-
-#### Production Testing
-The backend API is tested in production using comprehensive test scripts:
-
-**From Frontend Repository**:
-```bash
-# Quick health check of production API
-./test-quick.sh                    # Tests API health and data flow
-
-# Comprehensive production validation  
-./test-production-complete.sh      # Full infrastructure and API testing
-```
-
-**Production Tests Include**:
-- ✅ **AWS Infrastructure**: ECS service, Redis cluster, Load Balancer health
-- ✅ **API Endpoints**: All 18+ endpoints including health, flights, helicopters, status
-- ✅ **Data Quality**: Flight data validation, helicopter detection, freshness checks
-- ✅ **Performance**: Response times, concurrent requests, load testing
-
-**Test Results**: JSON output with detailed metrics and timing for all production components.
-
-**See Frontend [TESTING.md](../flightTrackerWebUI/TESTING.md) for complete production testing guide**
+- Unit tests for collectors and data transformations
+- Integration tests with Redis
+- Mock external API responses
+- End-to-end tests for web interface
 
 ### Technology Stack
 - **Python 3.11+** - Modern Python features and performance

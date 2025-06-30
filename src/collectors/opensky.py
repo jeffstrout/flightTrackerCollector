@@ -5,7 +5,6 @@ import httpx
 
 from .base import BaseCollector
 from ..models.aircraft import Aircraft
-from ..exceptions import CollectorConnectionError, CollectorTimeout, DataValidationError
 
 logger = logging.getLogger(__name__)
 

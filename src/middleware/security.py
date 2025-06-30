@@ -202,12 +202,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Add security headers
-        response = self._add_security_headers(response)
-        
-        # Add rate limit headers
-        response = self._add_rate_limit_headers(response, client_ip, request.url.path)
-        
-        return response
+        return self._add_security_headers(response)
     
     def _add_security_headers(self, response: Response) -> Response:
         """Add security headers to response"""
@@ -220,33 +215,6 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # Remove server header if present
         if "Server" in response.headers:
             del response.headers["Server"]
-        
-        return response
-    
-    def _add_rate_limit_headers(self, response: Response, client_ip: str, request_path: str) -> Response:
-        """Add rate limit headers to response"""
-        is_cloudfront = self._is_cloudfront_ip(client_ip)
-        rate_limit = self._get_rate_limit_for_path(request_path, is_cloudfront)
-        
-        # Calculate remaining requests for this IP
-        now = time.time()
-        recent_requests = [
-            req_time for req_time in self.request_counts.get(client_ip, [])
-            if now - req_time < self.rate_limit_window
-        ]
-        remaining = max(0, rate_limit - len(recent_requests))
-        
-        # Calculate reset time (when the window resets)
-        if recent_requests:
-            oldest_request = min(recent_requests)
-            reset_time = int(oldest_request + self.rate_limit_window)
-        else:
-            reset_time = int(now + self.rate_limit_window)
-        
-        # Add rate limit headers
-        response.headers["X-RateLimit-Limit"] = str(rate_limit)
-        response.headers["X-RateLimit-Remaining"] = str(remaining)
-        response.headers["X-RateLimit-Reset"] = str(reset_time)
         
         return response
 
