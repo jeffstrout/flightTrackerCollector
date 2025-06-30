@@ -5,6 +5,7 @@ import httpx
 
 from .base import BaseCollector
 from ..models.aircraft import Aircraft
+from ..exceptions import CollectorConnectionError, CollectorTimeout, DataValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +56,28 @@ class Dump1090Collector(BaseCollector):
             
         except httpx.HTTPStatusError as e:
             self.update_stats(False)
-            logger.error(f"dump1090 HTTP error {e.response.status_code}: {e}")
-            return None
+            raise CollectorConnectionError(
+                collector_name=self.name,
+                endpoint=url,
+                details={'status_code': e.response.status_code, 'response': str(e)}
+            )
+            
+        except httpx.TimeoutException as e:
+            self.update_stats(False)
+            raise CollectorTimeout(
+                collector_name=self.name,
+                timeout=self.config.get('timeout', 5),
+                details={'error': str(e)}
+            )
             
         except Exception as e:
             self.update_stats(False)
             logger.error(f"dump1090 fetch failed: {e}")
-            return None
+            raise CollectorConnectionError(
+                collector_name=self.name,
+                endpoint=url,
+                details={'error': str(e)}
+            )
     
     def _convert_dump1090_data(self, data: dict) -> List[Aircraft]:
         """Convert dump1090 JSON data to Aircraft objects"""

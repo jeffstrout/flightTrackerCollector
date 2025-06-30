@@ -10,6 +10,7 @@ from ..collectors.dump1090 import Dump1090Collector
 from ..models.aircraft import Aircraft
 from .blender import DataBlender
 from .redis_service import RedisService
+from ..exceptions import CollectorError, CollectorTimeout, CollectorConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,11 @@ class CollectorService:
         for _ in dump1090_collectors:
             if task_index < len(collection_results):
                 result = collection_results[task_index]
-                if isinstance(result, Exception):
+                if isinstance(result, CollectorTimeout):
+                    logger.warning(f"dump1090 timeout for {region_name}: {result.message}")
+                elif isinstance(result, CollectorConnectionError):
+                    logger.error(f"dump1090 connection failed for {region_name}: {result.message}")
+                elif isinstance(result, Exception):
                     logger.error(f"dump1090 collection failed for {region_name}: {result}")
                 elif result:
                     dump1090_aircraft.extend(result)
@@ -131,7 +136,11 @@ class CollectorService:
             for _ in opensky_collectors:
                 if task_index < len(collection_results):
                     result = collection_results[task_index]
-                    if isinstance(result, Exception):
+                    if isinstance(result, CollectorTimeout):
+                        logger.warning(f"OpenSky timeout for {region_name}: {result.message}")
+                    elif isinstance(result, CollectorConnectionError):
+                        logger.error(f"OpenSky connection failed for {region_name}: {result.message}")
+                    elif isinstance(result, Exception):
                         logger.error(f"OpenSky collection failed for {region_name}: {result}")
                     elif result:
                         # Cache the data for this region
