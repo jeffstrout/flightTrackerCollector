@@ -25,17 +25,45 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # CloudFront IP ranges that should be whitelisted for frontend access
         # These are common CloudFront edge server IP ranges
         self.cloudfront_ip_ranges = [
-            "107.131.",     # Common CloudFront range
+            "3.33.",        # AWS CloudFront (new range)
             "13.32.",       # AWS CloudFront
             "13.35.",       # AWS CloudFront
+            "13.54.",       # AWS CloudFront
+            "13.59.",       # AWS CloudFront
+            "13.224.",      # AWS CloudFront
+            "13.225.",      # AWS CloudFront
+            "13.226.",      # AWS CloudFront
+            "13.227.",      # AWS CloudFront
+            "13.228.",      # AWS CloudFront
+            "15.197.",      # AWS CloudFront (new range)
             "18.64.",       # AWS CloudFront
+            "18.65.",       # AWS CloudFront
+            "18.66.",       # AWS CloudFront
+            "18.67.",       # AWS CloudFront
+            "18.68.",       # AWS CloudFront
+            "52.46.",       # AWS CloudFront
+            "52.84.",       # AWS CloudFront
             "52.85.",       # AWS CloudFront
             "54.192.",      # AWS CloudFront
             "54.230.",      # AWS CloudFront
             "54.239.",      # AWS CloudFront
+            "54.240.",      # AWS CloudFront
+            "64.252.",      # AWS CloudFront
+            "65.8.",        # AWS CloudFront
+            "65.9.",        # AWS CloudFront
+            "70.132.",      # AWS CloudFront
             "99.84.",       # AWS CloudFront
+            "99.86.",       # AWS CloudFront
+            "107.131.",     # Common CloudFront range
+            "108.156.",     # AWS CloudFront
+            "108.157.",     # AWS CloudFront
+            "108.158.",     # AWS CloudFront
+            "130.176.",     # AWS CloudFront
+            "143.204.",     # AWS CloudFront
+            "144.220.",     # AWS CloudFront
             "204.246.",     # AWS CloudFront
             "205.251.",     # AWS CloudFront
+            "216.137.",     # AWS CloudFront
         ]
         
         # Frontend endpoints that need higher rate limits (requests per minute)
@@ -175,7 +203,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Too many requests. Please try again later."},
-                headers={"Retry-After": str(self.rate_limit_window)}
+                headers={
+                    "Retry-After": str(self.rate_limit_window),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+                    "Access-Control-Allow-Headers": "*"
+                }
             )
         
         # Check for suspicious requests
