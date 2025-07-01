@@ -2,9 +2,11 @@
 
 🌐 **Live Production System**: ✅ **Operational**
 
-**Web Interface**: https://choppertracker.com/
-**API Endpoint**: https://api.choppertracker.com/api/v1
-**API Documentation**: https://api.choppertracker.com/docs
+**Web Interface**: http://flight-tracker-web-ui-1750266711.s3-website-us-east-1.amazonaws.com/
+**API Endpoint**: https://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1
+**API Documentation**: https://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/docs
+
+⚠️ **Known Issue**: Vanity domain `https://api.choppertracker.com` has SSL handshake failures - use ALB URL above
 
 ### 🎯 **Enterprise DNS Infrastructure**
 - **Domain**: choppertracker.com (managed via AWS Route 53)
@@ -244,13 +246,16 @@ The application uses a centralized Redis instance with database separation:
 - `GET /redoc` - Alternative API documentation interface (ReDoc)
 
 ### Security Features
-- **Rate Limiting**: 1000 requests per minute per IP address with intelligent scaling
-  - **CloudFront IP Detection**: Higher limits for frontend traffic
-  - **Path-Specific Limits**: Customized limits per endpoint type
+- **Rate Limiting**: Enhanced rate limiting with frontend-optimized limits
+  - **Base Rate**: 1000 requests per minute per IP address
+  - **CloudFront IP Detection**: Comprehensive IP range detection for frontend traffic
+  - **Frontend Endpoint Limits**: 
+    - `/api/v1/regions`: 300 requests/minute (for initial loads and retries)
+    - `/api/v1/status`: 300 requests/minute (health checks and monitoring)
+    - `/api/v1/{region}/flights`: 600 requests/minute (real-time polling every 3 seconds)
+    - `/api/v1/{region}/choppers`: 600 requests/minute (helicopter tracking)
+  - **CORS on Rate Limits**: 429 responses include proper CORS headers
   - **Rate Limit Headers**: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
-- **Trusted Hosts**: FastAPI TrustedHostMiddleware validates allowed domains
-  - **Allowed Hosts**: api.choppertracker.com, *.choppertracker.com, ALB hostname
-  - **Host Header Validation**: Prevents host header injection attacks
 - **Security Headers**: X-Frame-Options, X-Content-Type-Options, CSP, etc.
 - **CORS Configuration**: Optimized for public API access with proper origin control
 - **Suspicious Request Detection**: Blocks common vulnerability scan patterns
@@ -655,16 +660,20 @@ For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 
 # Production Status & Recent Fixes
 
-## ✅ Current System Status (2025-06-22)
+## ✅ Current System Status (2025-07-01)
 
 **All systems operational and performing optimally:**
 
-- **Frontend**: ✅ React app serving from S3, fully functional
-- **Backend**: ✅ FastAPI on ECS Fargate, <200ms response times
+- **Frontend**: ✅ React app serving from S3, fully functional with fixed rate limiting
+- **Backend**: ✅ FastAPI on ECS Fargate, <200ms response times via ALB URL
 - **Database**: ✅ Aircraft enrichment working, ElastiCache Redis cluster
 - **Data Collection**: ✅ ~250 aircraft tracked in East Texas region
+- **Pi Forwarders**: ✅ Working via HTTP ALB URL due to SSL certificate issues
+- **Rate Limiting**: ✅ Optimized for frontend usage patterns (300-600 requests/minute)
 - **Monitoring**: ✅ CloudWatch logs, automated health checks
 - **CI/CD**: ✅ GitHub Actions automated deployment
+
+⚠️ **Known Issue**: Vanity domain `https://api.choppertracker.com` has SSL handshake failures
 
 ## 🔧 Recent Fixes Applied
 
@@ -712,6 +721,24 @@ For complete MCP documentation, see [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
   - Added fastapi.tiangolo.com for favicon resources
   - Maintained security while enabling documentation access
 - **Result**: ✅ API documentation now accessible at https://api.choppertracker.com/docs
+
+### Frontend Rate Limiting Fix (RESOLVED - 2025-07-01)
+- **Problem**: Frontend getting 429 errors and CORS failures
+- **Root Cause**: Rate limits too low for browser behavior (60/min) and missing CORS headers on 429 responses
+- **Solution**:
+  - Increased frontend endpoint rate limits: `/api/v1/regions` and `/api/v1/status` from 60 to 300 requests/minute
+  - Increased flight endpoints from 240 to 600 requests/minute for real-time polling
+  - Added proper CORS headers to 429 rate limit responses
+  - Expanded CloudFront IP detection with newer IP ranges (3.33.*, 15.197.*)
+- **Result**: ✅ Frontend works without rate limiting or CORS errors
+
+### SSL Certificate Issues (ONGOING - 2025-07-01)
+- **Problem**: Vanity domain `https://api.choppertracker.com` has SSL handshake failures
+- **Root Cause**: SSL configuration issues with ALB listener or certificate binding
+- **Workaround**: Using ALB URL for both frontend and Pi forwarders
+  - Frontend: `https://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1`
+  - Pi Forwarders: `http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1`
+- **Status**: ⚠️ Both frontend and Pi stations working, vanity domain investigation ongoing
 
 ## 🎯 Performance Metrics
 
@@ -791,10 +818,12 @@ The Raspberry Pi forwarder (`pi_forwarder/aircraft_forwarder.py`) collects aircr
 
 ### Configuration
 The forwarder is configured with:
-- `API_ENDPOINT`: https://api.choppertracker.com/api/v1/aircraft/bulk
+- `API_ENDPOINT`: http://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1/aircraft/bulk
 - `API_KEY`: Station-specific API key (e.g., "etex.abc123def456ghi789jkl012")
 - `STATION_ID`: Unique station identifier (e.g., "ETEX01")
 - `DUMP1090_URL`: Local dump1090 endpoint (default: http://localhost:8080/data/aircraft.json)
+
+⚠️ **Note**: Using HTTP ALB URL due to SSL certificate issues with vanity domain
 
 ### Running as a Systemd Service
 
