@@ -126,7 +126,7 @@ async def get_config():
     """Serve frontend configuration with version info"""
     config_js = f"""
 window.FLIGHT_TRACKER_CONFIG = {{
-    API_BASE_URL: 'https://api.choppertracker.com/api/v1',
+    API_BASE_URL: 'https://flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com/api/v1',
     ENV: 'production',
     VERSION: {json.dumps(VERSION_INFO)},
     CACHE_BUST: '{int(time.time())}'
