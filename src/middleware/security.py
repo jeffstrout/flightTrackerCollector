@@ -68,12 +68,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         
         # Frontend endpoints that need higher rate limits (requests per minute)
         self.frontend_endpoints = {
-            "/api/v1/regions": 60,           # Initial load, occasional refresh
-            "/api/v1/status": 60,            # Periodic health checks
-            "/api/v1/etex/flights": 240,     # Every 3 seconds = 20/min, allow 4x buffer
-            "/api/v1/etex/choppers": 240,    # Helicopter tracking, same frequency
-            "/api/v1/socal/flights": 240,    # SoCal region if enabled
-            "/api/v1/socal/choppers": 240,   # SoCal helicopters
+            "/api/v1/regions": 300,          # Higher limit for initial loads and retries
+            "/api/v1/status": 300,           # Higher limit for health checks and monitoring
+            "/api/v1/etex/flights": 600,     # Every 3 seconds = 20/min, allow 10x buffer for retries
+            "/api/v1/etex/choppers": 600,    # Helicopter tracking, same frequency
+            "/api/v1/socal/flights": 600,    # SoCal region if enabled
+            "/api/v1/socal/choppers": 600,   # SoCal helicopters
         }
         
         # Suspicious patterns to detect
