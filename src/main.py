@@ -80,18 +80,8 @@ app = FastAPI(
 )
 
 # Add trusted hosts middleware to accept vanity domains
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-app.add_middleware(
-    TrustedHostMiddleware, 
-    allowed_hosts=[
-        "api.choppertracker.com",
-        "choppertracker.com", 
-        "*.choppertracker.com",
-        "flight-tracker-alb-790028972.us-east-1.elb.amazonaws.com",
-        "localhost",
-        "127.0.0.1"
-    ]
-)
+# Note: We're not using TrustedHostMiddleware because it blocks ALB health checks
+# Instead, we'll implement host validation in the SecurityMiddleware if needed
 
 # Add CORS middleware - allow all origins for public flight tracking API
 app.add_middleware(
